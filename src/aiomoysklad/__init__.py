@@ -1,5 +1,6 @@
 """Async toolkit for MoySklad JSON API 1.2 integrations."""
 
+from ._auth import AuthKind, BasicAuth, BearerToken
 from ._errors import (
     ApiVersionGoneError,
     AuthError,
@@ -18,11 +19,15 @@ from ._errors import (
 )
 from ._models import ApiErrorDetail, Meta
 from ._version import __version__
+from ._weights import request_weight
 
 __all__ = [
     "ApiErrorDetail",
     "ApiVersionGoneError",
     "AuthError",
+    "AuthKind",
+    "BasicAuth",
+    "BearerToken",
     "ConflictError",
     "ForbiddenError",
     "GuardTrippedError",
@@ -37,4 +42,5 @@ __all__ = [
     "UnsupportedMediaTypeError",
     "ValidationError",
     "__version__",
+    "request_weight",
 ]
