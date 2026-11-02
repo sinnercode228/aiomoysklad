@@ -12,13 +12,14 @@ account can answer.
 ## Why another client
 
 The official generated SDK is synchronous, has no rate limiting and takes `filter` as a raw
-string. An existing async client hard-codes 45 requests per 3 seconds, which has been wrong
+string. An existing async client defaults to 45 requests per 3 seconds, which has been wrong
 for user tokens since May 2026. aiomoysklad is async (httpx) and counts what MoySklad counts:
 
 - **Request weight.** The basket holds 45 units per 3 seconds, counted per user and per
   solution. A solution's request costs 1 unit; a draft or in-moderation solution's 4; a
   user's (login and password, or a user token) 3 from 2026-09-01 and 4 from 2026-12-01. The
-  stock reports cost 5 units each.
+  full stock reports cost 5 units; the short `/current` ones are charged 5 too, as a
+  precaution.
 - **At most 5 requests in flight** per user or solution (20 per account).
 - **429 retries** that wait for `X-Lognex-Retry-After` or `X-Lognex-Reset`, and slow down
   early from `X-RateLimit-Remaining`. A `POST` is resent only when it carries a `syncId`.
@@ -82,9 +83,8 @@ for row, quantity in join_stock(rows, stock, default=0.0):
 ```
 
 `ms.stock.bystore_current()` groups by store as well. Rows are typed (`StockRow`,
-`StoreStockRow`). `StockPoller` polls with
-`changedSince` and an overlap, and reads a full report at least daily, as the docs advise.
-Long id lists are split to stay under the 8 KB header limit.
+`StoreStockRow`). `StockPoller` polls with `changedSince` and an overlap, and reads a full
+report at least daily, as the docs advise.
 
 ## Customer orders
 
@@ -115,7 +115,7 @@ first time.
 ## Webhooks
 
 Webhooks work on paid plans and in the trial only. `ensure` creates a webhook or turns a
-disabled one back on, so a deploy script can run it every time:
+disabled one back on, so it is safe to run on every deploy:
 
 <!-- sample: webhooks -->
 ```python
@@ -132,16 +132,17 @@ for received in await receiver.receive(body, request_id, fetch=True):
 MoySklad expects 200 or 204 within 1500 ms and resends with the same `requestId`. In an
 endpoint, call `receiver.accept(body, request_id)` (parse and dedupe only), answer 204, and
 fetch the entities afterwards. Nothing in the docs signs a webhook, so use a secret path; the
-receiver fetches entities only from the API host. The default dedupe store is in memory;
-anything with an atomic `first_seen(key, ttl)`, such as Redis, can replace it.
+receiver fetches entities only from the API host. The in-memory dedupe store can be swapped
+for anything with an atomic `first_seen(key, ttl)`, such as Redis.
 
-MoySklad disables webhooks whose receiver failed on more than seven of the last ten days.
+MoySklad disables webhooks whose receiver failed on more than seven of the last ten days and
+handled none successfully in those ten days.
 `await ms.webhooks.health(url_prefix)` lists the disabled ones and can re-enable them.
 
 ## Errors
 
-Each HTTP status has its own exception (`NotFoundError`, `RateLimitError`, `ValidationError`
-and so on), all under `MoySkladError`, with the parsed `errors` array and codes.
+Each HTTP status has its own exception (`NotFoundError`, `RateLimitError` and so on) under
+`MoySkladError`, with the parsed `errors` array and codes.
 `GuardTrippedError` means the client refused to send a request that could get access cut off.
 
 ## Examples
@@ -152,8 +153,7 @@ and so on), all under `MoySkladError`, with the parsed `errors` array and codes.
 ## Not covered
 
 No full data model (entities are dicts), no positions sub-resources, no async tasks, no file
-downloads, no legacy assortment endpoint. Changes are listed in
-[CHANGELOG.md](CHANGELOG.md).
+downloads, no legacy assortment endpoint. Changes: [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

@@ -183,8 +183,9 @@ class ReceivedEvent:
 class ReceiverStats:
     """Counts of what a receiver saw, to alert well before MoySklad turns webhooks off.
 
-    MoySklad turns webhooks off after more than seven of the last ten days without one
-    handled (``_restrictions.md § Автоматическое отключение доступа``). These counts see only
+    MoySklad turns webhooks off when, on more than seven of the last ten days, the receiver
+    answered only with errors or was unreachable, and it handled not one webhook in those ten
+    days (``_restrictions.md § Автоматическое отключение доступа``). These counts see only
     the requests that reached this process.
 
     Attributes:
@@ -319,7 +320,10 @@ class WebhookReceiver:
     async def fetch_stock(
         self, notification: StockNotification
     ) -> list[StockRow] | list[StoreStockRow]:
-        """Read the report a stock notification points at; it costs 5 units.
+        """Read the report a stock notification points at; it is charged 5 units.
+
+        The 5 units are documented for the full stock reports; for the short ``/current`` ones
+        they are a precaution (``docs/design.md``, open question 1).
 
         Raises:
             WebhookPayloadError: ``reportUrl`` is not a short stock report of the API root.

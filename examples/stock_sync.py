@@ -14,8 +14,9 @@ Run::
 The names come from the assortment endpoint without stock (``assortmentWithoutStock``), the
 amounts from the short report ``/report/stock/all/current``, paired by id. Every 10 minutes it
 asks for the items changed since the last poll, with 5 minutes of overlap, and reads a full
-report again once a day, as the MoySklad docs advise. Each report request costs 5 units of the
-45-unit basket.
+report again once a day, as the MoySklad docs advise. The docs price the full stock reports
+at 5 units of the 45-unit basket; the client charges these short ``/current`` reports the
+same, as a precaution, until a live account confirms it.
 """
 
 from __future__ import annotations

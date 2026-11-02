@@ -217,9 +217,11 @@ def parse_stock_rows(
 class StockReports:
     """The short stock reports, ``ms.stock``.
 
-    Each request costs 5 units of the 3-second basket, whatever the credentials
-    (``_restrictions.md § Лимит запросов за 3-секундный период``; see ``docs/design.md``, open
-    question 1, for the ``/current`` paths).
+    The docs price ``/report/stock/all`` and ``/report/stock/bystore`` at 5 units of the
+    3-second basket, whatever the credentials (``_restrictions.md § Лимит запросов за
+    3-секундный период``). They do not name the short ``/current`` reports used here; the
+    client charges them 5 units too, as a precaution, until a live account shows their real
+    weight (``docs/design.md``, open question 1).
 
     Attributes:
         now: Returns the current moment, used to check ``changed_since``.
@@ -255,8 +257,8 @@ class StockReports:
             store_ids: Only these stores, by id.
 
         Long id lists are split over several requests so each stays under the 8 KB header
-        limit; every request costs 5 units, so for thousands of ids a full report filtered
-        locally is cheaper.
+        limit; every request is charged 5 units, so for thousands of ids a full report
+        filtered locally is cheaper.
 
         Raises:
             ValueError: An unknown ``stock_type``, an id that is not an id, or a

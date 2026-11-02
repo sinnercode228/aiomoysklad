@@ -17,7 +17,8 @@ Tested against mocked HTTP only; not yet tested against a live MoySklad account.
 - `BasicAuth` and `BearerToken` with an `AuthKind` (user, solution, draft solution), and
   `issue_user_token` for `POST /security/token`.
 - Request weights from the dated schedule of the docs (`request_weight`), overridable per
-  path; the stock reports cost 5 units.
+  path; the full stock reports cost 5 units, and the short `/current` ones are charged the
+  same as a precaution until a live account confirms it.
 - `RateLimiter`, a 45-unit basket where each unit returns 3 seconds after use, tuned down from
   `X-RateLimit-Remaining` and paused by `X-Lognex-Reset`; `ConcurrencyLimit`, 5 requests in
   flight by default. Both can be shared between clients.

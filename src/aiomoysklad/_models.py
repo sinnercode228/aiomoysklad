@@ -111,8 +111,8 @@ class Webhook(MoySkladModel):
         entity_type: The entity type it watches, such as ``customerorder``.
         action: ``CREATE``, ``UPDATE``, ``DELETE`` or ``PROCESSED`` (async tasks only).
         url: Where MoySklad posts the notifications; up to 255 characters.
-        enabled: Whether it is on. MoySklad turns it off after its receiver failed for more
-            than seven of the last ten days.
+        enabled: Whether it is on. MoySklad turns it off after its receiver failed on more
+            than seven of the last ten days and handled none in those ten days.
         method: The HTTP method of the notifications, ``POST``.
         diff_type: ``NONE`` or ``FIELDS``, for ``UPDATE`` only; with ``FIELDS`` each event
             lists the changed fields.
