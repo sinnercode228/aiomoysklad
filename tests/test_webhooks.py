@@ -237,7 +237,37 @@ async def test_stock_webhooks_have_their_own_fields(ms: MoySklad, mock: respx.Mo
     assert (listed.report_type, listed.stock_type) == ("all", "stock")
     made = await ms.webhook_stocks.ensure(RECEIVER, report_type="bystore")
     assert made.report_type == "bystore"
-    assert sent(post) == {"url": RECEIVER, "reportType": "bystore", "stockType": "stock"}
+    # dictionaries/_webhookstock.md: "создайте вебхук на изменения остатков и включите его";
+    # the create example sends "enabled": true.
+    assert sent(post) == {
+        "url": RECEIVER,
+        "enabled": True,
+        "reportType": "bystore",
+        "stockType": "stock",
+    }
+
+
+async def test_a_stock_webhook_is_created_enabled(ms: MoySklad, mock: respx.MockRouter) -> None:
+    post = mock.post(STOCK_HOOKS).respond(200, json=stock_hook(H2, url=RECEIVER))
+    made = await ms.webhook_stocks.create(RECEIVER)
+    assert made.enabled
+    assert sent(post) == {
+        "url": RECEIVER,
+        "enabled": True,
+        "reportType": "all",
+        "stockType": "stock",
+    }
+
+
+async def test_ensure_turns_on_a_stock_webhook_that_came_back_disabled(
+    ms: MoySklad, mock: respx.MockRouter
+) -> None:
+    mock.get(STOCK_HOOKS).respond(200, json=collection(STOCK_HOOKS, []))
+    mock.post(STOCK_HOOKS).respond(200, json=stock_hook(H2, url=RECEIVER, enabled=False))
+    put = mock.put(f"{STOCK_HOOKS}/{H2}").respond(200, json=stock_hook(H2, url=RECEIVER))
+    made = await ms.webhook_stocks.ensure(RECEIVER)
+    assert made.enabled
+    assert sent(put) == {"enabled": True}
 
 
 async def test_stock_webhooks_check_the_documented_values(

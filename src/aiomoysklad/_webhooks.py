@@ -107,6 +107,12 @@ def _check_stock_fields(fields: Mapping[str, Any]) -> dict[str, Any]:
     return body
 
 
+def _stock_body(url: str, report_type: str, stock_type: str) -> dict[str, Any]:
+    # dictionaries/_webhookstock.md: "Чтобы получать уведомления, создайте вебхук на изменения
+    # остатков и включите его"; the create example sends "enabled": true.
+    return {"url": url, "enabled": True, "reportType": report_type, "stockType": stock_type}
+
+
 class _Hooks(Generic[ModelT]):
     """What webhooks and webhookstocks share."""
 
@@ -323,11 +329,13 @@ class WebhookStocks(_Hooks[WebhookStock]):
         report_type: ReportType = "all",
         stock_type: StockWebhookType = "stock",
     ) -> WebhookStock:
-        """Create a stock webhook; MoySklad then posts every 1 to 5 minutes when stock changed.
+        """Create an enabled stock webhook; MoySklad posts every 1 to 5 minutes on changes.
 
         ``stockType`` + ``reportType`` + ``url`` must be unique, with at most 5 urls for a
         user and 1 for a solution per ``stockType`` + ``reportType``
-        (``dictionaries/_webhookstock.md § Создать вебхук на изменение остатков``).
+        (``dictionaries/_webhookstock.md § Создать вебхук на изменение остатков``). The page
+        says to create the webhook and turn it on, gives no default for ``enabled``, and its
+        create example sends ``"enabled": true``; so does this method.
 
         Args:
             url: The receiver, an absolute http(s) URL of up to 255 characters.
@@ -337,7 +345,7 @@ class WebhookStocks(_Hooks[WebhookStock]):
         Raises:
             ValueError: A value the docs do not allow.
         """
-        return await self._create({"url": url, "reportType": report_type, "stockType": stock_type})
+        return await self._create(_stock_body(url, report_type, stock_type))
 
     async def ensure(
         self,
@@ -347,8 +355,9 @@ class WebhookStocks(_Hooks[WebhookStock]):
         stock_type: StockWebhookType = "stock",
     ) -> WebhookStock:
         """Make sure an enabled stock webhook exists, as :meth:`Webhooks.ensure` does."""
-        body = self._check({"url": url, "reportType": report_type, "stockType": stock_type})
+        body = self._check(_stock_body(url, report_type, stock_type))
         for hook in await self.list():
             if (hook.url, hook.report_type, hook.stock_type) == (url, report_type, stock_type):
                 return hook if hook.enabled else await self.enable(hook.id)
-        return await self._create(body)
+        made = await self._create(body)
+        return made if made.enabled else await self.enable(made.id)

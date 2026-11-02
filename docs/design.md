@@ -528,7 +528,9 @@ posts metas 1000 per request (`_general.md § Создание и обновле
 `ms.webhooks.create(entity_type, action, url, *, diff_type=None)`,
 `ms.webhook_stocks.create(url, *, report_type="all", stock_type="stock")`. `ensure` with a
 `diff_type` also sets it on a matching webhook. Creates are not resent: a webhook has no
-`syncId`.
+`syncId`. A stock webhook is created with `"enabled": true`: the page says to create it and
+turn it on, gives no default, and its create example sends that field. `ensure` turns on a
+stock webhook that still comes back disabled.
 
 ### 7.2 Payloads
 
