@@ -447,7 +447,10 @@ mid-walk moves to the end and shifts the rest. So the iterator pages by key inst
 2. Yield rows not already seen; remember `(id, updated)` of rows at the last second.
 3. Next page: `T` = `updated` of the last row, rounded down; repeat until a page is short.
 4. If a whole page falls in one second, page through that second with `offset` and
-   `updated>=T;updated<T+1s`, then continue from `T+1s`.
+   `updated>=T;updated<T+1s`. An order leaving the second between two offset pages shifts
+   the later rows back and would hide one, and `id` filters take only `=` and `!=`
+   (`documents/_customerOrder.md § Атрибуты сущности`), so the second is read again from
+   offset 0 until a whole pass yields no unseen id. Then continue from `T+1s`.
 
 ```python
 orders = ms.customer_orders.iter_updated_since(cursor, filter=None, page_size=1000, expand=None)
@@ -463,9 +466,10 @@ Details settled while implementing:
   a later second is read: more orders may still be written in that second. A later run then
   reads that second again by offset, skipping what it saw.
 - The caller's filter cannot hold `updated`; the cursor sets it.
-- An order changed during the walk comes again with its new `updated`. Offset paging inside
-  one second (step 4) can still skip an order if another order of that second changes during
-  that walk; that needs more than `page_size` orders saved in one second.
+- An order changed during the walk comes again with its new `updated`. Inside a crowded
+  second (step 4) the extra pass catches an order hidden by another leaving the second; the
+  price is one more pass over that second, which needs more than `page_size` orders saved in
+  it to happen at all.
 
 Orders in the trash presumably do not show up: `_general.md § Фильтрация документов` says
 what `isDeleted=true`, `isDeleted=false` and both together return, but not what a list

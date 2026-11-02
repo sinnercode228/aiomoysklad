@@ -213,17 +213,34 @@ class OrderStream:
             # same page, so read the rest of the second by offset, then go on after it. The
             # cursor stays on that second until a later order is read, since more orders may
             # still be written in it.
-            offset = size
             upper = first + _SECOND
+            async for row in self._crowded_second(first, upper):
+                yield row
+            lower = upper
+
+    async def _crowded_second(
+        self, first: datetime, upper: datetime
+    ) -> AsyncIterator[dict[str, Any]]:
+        # The docs give id only = and != in a filter (documents/_customerOrder.md § Атрибуты
+        # сущности), so the second cannot be paged by key. An order that leaves it between two
+        # offset pages shifts the later rows back and hides one, so the second is read again
+        # from offset 0 until a whole pass brings nothing new.
+        size = self._page_size
+        offset = size  # the first page of this second was already read
+        while True:
+            took = False
             while True:
                 more = await self._page(first, upper, offset)
                 for row in more:
                     if self._take(row):
+                        took = True
                         yield row
                 if len(more) < size:
                     break
                 offset += size
-            lower = upper
+            if not took:
+                return
+            offset = 0
 
 
 class CustomerOrders:
@@ -405,7 +422,9 @@ class CustomerOrders:
         already read. An order changed while the walk runs moves to the end and comes again
         with its new ``updated``; nothing that stays put is skipped. ``updated`` is filtered to
         the second (``_general.md § Формат даты и времени``). Only when a whole page falls
-        within one second is that second read on by ``offset``.
+        within one second is that second read on by ``offset``, and then read again from the
+        start until a pass finds nothing new, since an order leaving the second mid-pass
+        shifts the offsets; that costs one more pass over the second.
 
         Orders in the trash presumably do not come. ``_general.md § Фильтрация документов``
         says ``isDeleted=true`` returns the documents in the trash, ``isDeleted=false`` the

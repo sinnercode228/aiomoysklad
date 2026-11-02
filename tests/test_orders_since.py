@@ -112,13 +112,36 @@ async def test_a_page_within_one_second_is_read_on_with_an_offset(
     stream = ms.customer_orders.iter_updated_since(T0 + timedelta(seconds=1), page_size=3)
     ids = await collect(stream)
     assert ids == [o.id for o in same] + ["last"]
+    second = "updated>=2026-11-02 10:00:01;updated<2026-11-02 10:00:02"
     assert [(r.url.params["filter"], r.url.params.get("offset")) for r in fake.requests] == [
         ("updated>=2026-11-02 10:00:01", None),
-        ("updated>=2026-11-02 10:00:01;updated<2026-11-02 10:00:02", "3"),
-        ("updated>=2026-11-02 10:00:01;updated<2026-11-02 10:00:02", "6"),
+        (second, "3"),
+        (second, "6"),
+        # One more pass over the second finds nothing new, so no row was skipped.
+        (second, None),
+        (second, "3"),
+        (second, "6"),
         ("updated>=2026-11-02 10:00:02", None),
     ]
     assert stream.cursor == OrderCursor(T0 + timedelta(seconds=5), frozenset({"last"}))
+
+
+async def test_an_order_leaving_a_crowded_second_does_not_hide_another(
+    ms: MoySklad, mock: respx.MockRouter
+) -> None:
+    # Offset paging inside one second: when "a" moves to a later second after the first page,
+    # every later row shifts back by one and the next offset page starts past "c".
+    fake = FakeOrders([Order(name, at(1 + n / 1000)) for n, name in enumerate("abcde")])
+
+    def move_a_once(orders: FakeOrders) -> None:
+        if len(orders.requests) == 2:
+            orders.orders[0] = Order("a", at(5))
+
+    fake.on_request = move_a_once
+    mock.get(ORDERS).mock(side_effect=fake)
+    ids = await collect(ms.customer_orders.iter_updated_since(T0, page_size=2))
+    assert sorted(set(ids)) == ["a", "b", "c", "d", "e"]
+    assert ids.count("a") == 2  # once from the crowded second, once with its new updated
 
 
 async def test_a_full_second_at_the_end_keeps_the_cursor_on_it(
