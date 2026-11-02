@@ -18,6 +18,7 @@ from ._errors import (
     ValidationError,
 )
 from ._models import ApiErrorDetail, Meta
+from ._ratelimit import RateLimiter
 from ._version import __version__
 from ._weights import request_weight
 
@@ -37,6 +38,7 @@ __all__ = [
     "NotFoundError",
     "PayloadTooLargeError",
     "RateLimitError",
+    "RateLimiter",
     "RedirectError",
     "ServerError",
     "UnsupportedMediaTypeError",
