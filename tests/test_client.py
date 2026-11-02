@@ -481,3 +481,23 @@ def test_the_repr_hides_the_credentials() -> None:
     text = repr(MoySklad(BearerToken(TOKEN, kind=AuthKind.SOLUTION)))
     assert TOKEN not in text
     assert "SOLUTION" in text
+
+
+@pytest.mark.parametrize("weight", [0, 46])
+async def test_a_weight_outside_the_basket_is_refused_before_anything_is_counted(
+    ms: MoySklad, mock: respx.MockRouter, weight: int
+) -> None:
+    with pytest.raises(ValueError, match="weight"):
+        await ms.request("PUT", PRODUCT, json={}, weight=weight)
+    assert not mock.calls
+    assert ms.guard.tracked_keys() == 0
+
+
+def test_an_unparseable_url_is_not_owned(ms: MoySklad) -> None:
+    assert not ms.owns_url("https://[::1")
+    assert ms.owns_url(httpx.URL(f"{API}/entity/product"))
+
+
+def test_an_unparseable_webhook_prefix_is_refused() -> None:
+    with pytest.raises(ValueError, match="prefix"):
+        MoySklad(BearerToken(TOKEN), webhook_disable_prefixes=["https://[::1"])

@@ -323,6 +323,9 @@ class MoySklad:
         path = self.api_path(target)
         if weight is None:
             weight = request_weight(self.auth.kind, method, path, self._today(), self.weights)
+        if not 1 <= weight <= self.limiter.capacity:
+            msg = f"weight must be between 1 and {self.limiter.capacity}, got {weight}"
+            raise ValueError(msg)
         content = None if json is None else jsonlib.dumps(json, ensure_ascii=False).encode()
         request = self._build(method, target, content, headers)
         response = await self._send(
