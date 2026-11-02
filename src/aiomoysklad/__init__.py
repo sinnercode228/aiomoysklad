@@ -21,7 +21,7 @@ from ._errors import (
 )
 from ._filters import Filter
 from ._guard import ErrorGuard
-from ._models import ApiErrorDetail, Meta
+from ._models import ApiErrorDetail, Meta, State
 from ._orders import CustomerOrders, OrderCursor, OrderStream
 from ._pagination import Paginator
 from ._ratelimit import ConcurrencyLimit, RateLimiter
@@ -67,6 +67,7 @@ __all__ = [
     "RedirectError",
     "RetryPolicy",
     "ServerError",
+    "State",
     "StockPoller",
     "StockReports",
     "StockRow",

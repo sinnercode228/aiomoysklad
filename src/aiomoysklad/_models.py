@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-__all__ = ["ApiErrorDetail", "Meta", "MoySkladModel"]
+__all__ = ["ApiErrorDetail", "Meta", "MoySkladModel", "State"]
 
 
 class MoySkladModel(BaseModel):
@@ -62,3 +62,27 @@ class ApiErrorDetail(MoySkladModel):
     column: int | None = None
     dependencies: list[Meta] | None = None
     meta: Meta | None = None
+
+
+class State(MoySkladModel):
+    """A document state (``dictionaries/_states.md § Статусы``).
+
+    The states of a document type are listed in its metadata, such as
+    ``GET /entity/customerorder/metadata``, field ``states``.
+
+    Attributes:
+        meta: Meta of the state; its href is under ``.../metadata/states/{id}``.
+        id: The state's id.
+        name: The state's name.
+        state_type: ``Regular``, ``Successful`` (final, positive) or ``Unsuccessful`` (final,
+            negative).
+        color: The color, as an ARGB integer.
+        entity_type: The document type the state belongs to.
+    """
+
+    meta: Meta
+    id: str
+    name: str
+    state_type: str | None = Field(default=None, alias="stateType")
+    color: int | None = None
+    entity_type: str | None = Field(default=None, alias="entityType")

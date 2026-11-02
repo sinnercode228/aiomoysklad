@@ -15,15 +15,25 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from pydantic import ValidationError as PydanticValidationError
+
 from ._errors import MoySkladError
 from ._filters import Filter, split_conditions
+from ._models import State
 from ._pagination import MAX_LIMIT, list_params
 from ._time import MSK, format_datetime, parse_datetime
 
 if TYPE_CHECKING:
     from ._client import MoySklad
 
-__all__ = ["PATH", "CustomerOrders", "OrderCursor", "OrderStream", "check_id"]
+__all__ = [
+    "MAX_POSITIONS",
+    "PATH",
+    "CustomerOrders",
+    "OrderCursor",
+    "OrderStream",
+    "check_id",
+]
 
 logger = logging.getLogger("aiomoysklad")
 
@@ -32,6 +42,9 @@ PATH = "/entity/customerorder"
 _ORDER = "updated,asc;id,asc"
 _SECOND = timedelta(seconds=1)
 _ID = re.compile(r"[0-9A-Za-z-]{1,64}")
+# _restrictions.md § Ограничения на размер данных: at most 1000 items in one array of a
+# request, or the answer is 413.
+MAX_POSITIONS = 1000
 
 
 def check_id(value: str | uuid.UUID, what: str = "id") -> str:
@@ -218,9 +231,147 @@ class CustomerOrders:
 
     def __init__(self, client: MoySklad) -> None:
         self._client = client
+        self._states: list[State] | None = None
 
     def __repr__(self) -> str:
         return f"CustomerOrders({self._client!r})"
+
+    async def get(self, order_id: str | uuid.UUID, *, expand: str | None = None) -> Any:
+        """Read one order with ``GET /entity/customerorder/{id}``."""
+        params = {"expand": expand} if expand else None
+        return await self._client.get(f"{PATH}/{check_id(order_id, 'order id')}", params=params)
+
+    @staticmethod
+    def _prepare(body: Mapping[str, Any], sync_id: str | uuid.UUID | None) -> dict[str, Any]:
+        order = dict(body)
+        # documents/_customerOrder.md § Создать Заказ покупателя: both are required.
+        for required in ("organization", "agent"):
+            if not isinstance(order.get(required), Mapping):
+                msg = f"a customer order needs {required} as a meta object"
+                raise ValueError(msg)
+        positions = order.get("positions")
+        if isinstance(positions, Sequence) and len(positions) > MAX_POSITIONS:
+            msg = (
+                f"a request takes at most {MAX_POSITIONS} positions, got {len(positions)}; "
+                "add the rest through the positions resource"
+            )
+            raise ValueError(msg)
+        given = order.get("syncId")
+        if given is not None:
+            try:
+                given = str(uuid.UUID(str(given)))
+            except ValueError:
+                msg = f"syncId must be a UUID, got {given!r}"
+                raise ValueError(msg) from None
+        if sync_id is not None:
+            wanted = str(uuid.UUID(str(sync_id)))
+            if given is not None and given != wanted:
+                msg = "the body already has another syncId"
+                raise ValueError(msg)
+            given = wanted
+        order["syncId"] = given if given is not None else str(uuid.uuid4())
+        return order
+
+    async def create(
+        self, body: Mapping[str, Any], *, sync_id: str | uuid.UUID | None = None
+    ) -> Any:
+        """Create an order with ``POST /entity/customerorder``.
+
+        The body gets a ``syncId`` (a new UUID unless one is given), so a request that has to
+        be sent again after a timeout or a 5xx returns the order created the first time
+        instead of a second one (``_general.md § Назначение поля syncId``). The client resends
+        it for that reason; keep the ``syncId`` to resend it yourself later.
+
+        Args:
+            body: The order; ``organization`` and ``agent`` metas are required. It is not
+                changed.
+            sync_id: The ``syncId`` to use, such as the id of the order in your shop.
+
+        Returns:
+            The created order.
+
+        Raises:
+            ValueError: ``organization`` or ``agent`` is missing, more than 1000 positions,
+                or a ``syncId`` that is not a UUID or contradicts ``sync_id``.
+        """
+        order = self._prepare(body, sync_id)
+        return await self._client.request("POST", PATH, json=order)
+
+    async def states(self, *, reload: bool = False) -> list[State]:
+        """Return the order states from ``GET /entity/customerorder/metadata``.
+
+        They are read once per client and cached; ``reload=True`` reads them again.
+
+        Raises:
+            MoySkladError: The metadata has no readable ``states``.
+        """
+        if self._states is not None and not reload:
+            return list(self._states)
+        body = await self._client.get(f"{PATH}/metadata")
+        raw = body.get("states", []) if isinstance(body, dict) else None
+        if not isinstance(raw, list):
+            msg = f"GET {PATH}/metadata: no list of states"
+            raise MoySkladError(msg, body=body, method="GET")
+        try:
+            states = [State.model_validate(item) for item in raw]
+        except PydanticValidationError:
+            msg = f"GET {PATH}/metadata: unreadable states"
+            raise MoySkladError(msg, body=body, method="GET") from None
+        self._states = states
+        return list(states)
+
+    @staticmethod
+    def _find(states: list[State], wanted: str) -> State | None:
+        by_id = [s for s in states if s.id.lower() == wanted.lower()]
+        if by_id:
+            return by_id[0]
+        by_name = [s for s in states if s.name == wanted]
+        if len(by_name) > 1:
+            msg = f"{len(by_name)} states are named {wanted!r}; pass the state or its id"
+            raise LookupError(msg)
+        return by_name[0] if by_name else None
+
+    async def _resolve(self, state: str | uuid.UUID | State) -> State:
+        if isinstance(state, State):
+            return state
+        wanted = str(state)
+        found = self._find(await self.states(), wanted)
+        if found is None:
+            # States change rarely; one reload covers a state added since they were cached.
+            found = self._find(await self.states(reload=True), wanted)
+        if found is None:
+            msg = f"no customer order state named or with id {wanted!r}"
+            raise LookupError(msg)
+        return found
+
+    async def set_state(self, order_id: str | uuid.UUID, state: str | uuid.UUID | State) -> Any:
+        """Move an order to another state with ``PUT /entity/customerorder/{id}``.
+
+        The order's ``state`` field takes the state's meta (``documents/_customerOrder.md
+        § Атрибуты сущности``). Each call is a PUT to that order, which counts towards the
+        cut-off of 100 PUTs to one entity per minute (``_restrictions.md § Автоматическое
+        отключение доступа``).
+
+        Args:
+            order_id: The order's id.
+            state: The state's name, such as ``"Отгружен"``, its id, or a
+                :class:`~aiomoysklad.State` from :meth:`states`.
+
+        Returns:
+            The changed order.
+
+        Raises:
+            ValueError: ``order_id`` is not an id.
+            LookupError: No state, or more than one, has that name.
+        """
+        path = f"{PATH}/{check_id(order_id, 'order id')}"
+        found = await self._resolve(state)
+        meta = {
+            "href": found.meta.href,
+            "type": found.meta.type or "state",
+            "mediaType": found.meta.media_type or "application/json",
+        }
+        return await self._client.request("PUT", path, json={"state": {"meta": meta}})
 
     def iter_updated_since(
         self,
