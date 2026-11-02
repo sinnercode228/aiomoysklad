@@ -21,6 +21,7 @@ from ._guard import ErrorGuard
 from ._pagination import MAX_LIMIT, Paginator, list_params
 from ._ratelimit import ConcurrencyLimit, RateLimiter
 from ._retry import RateHeaders, RetryPolicy
+from ._stock import StockReports
 from ._time import moscow_today
 from ._version import __version__
 from ._weights import request_weight
@@ -142,6 +143,9 @@ class MoySklad:
         http: An ``httpx.AsyncClient`` to use; the client then leaves closing it to you. Its
             ``Accept-Encoding`` and auth are overridden on every request.
         today: Returns the date in Moscow that picks the weight from the schedule.
+
+    Attributes:
+        stock: The short stock reports, :class:`~aiomoysklad.StockReports`.
     """
 
     def __init__(
@@ -180,6 +184,7 @@ class MoySklad:
         self._today = today
         self._random = random.Random()  # noqa: S311 - jitter, not cryptography
         self._warned_deprecated = False
+        self.stock = StockReports(self)
 
     def __repr__(self) -> str:
         return f"MoySklad(base_url={self.base_url!r}, kind={self.auth.kind.name})"
