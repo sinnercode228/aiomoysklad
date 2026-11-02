@@ -1,7 +1,7 @@
 # aiomoysklad v0.1 design
 
-Status: draft, written before any code. Nothing in it has been checked against a live
-MoySklad account.
+Status: written before any code and updated where the implementation settled details.
+Nothing in it has been checked against a live MoySklad account.
 
 ## Sources
 
@@ -55,9 +55,11 @@ Out: a full data model, positions sub-resources, the legacy assortment endpoint,
 stock report, the vendor API.
 
 Entities stay plain `dict[str, Any]`. Only the small structures the toolkit itself reads
-(meta, errors, stock rows, webhooks, webhook payloads) get pydantic models with
+(meta, errors, states, webhooks, webhook payloads) get pydantic models with
 `extra="allow"`, because "a new field may be added without breaking the response structure"
-(`_general.md § Замечания по разработке клиентских приложений`).
+(`_general.md § Замечания по разработке клиентских приложений`). Stock rows are frozen
+dataclasses with only the documented fields instead (section 5.1): a report can hold tens of
+thousands of rows, and each row has one value whose key is the stock type.
 
 ## 1. Auth
 
@@ -343,12 +345,19 @@ the items that changed, not deltas.
 ```python
 await ms.stock.all_current(stock_type="stock", *, include_zero=False,
                            changed_since=None, assortment_ids=(), store_ids=())
-    -> list[StockRow]                  # assortment_id, value, stock_type
+    -> list[StockRow]                  # assortment_id, stock_type, value: float | None
 await ms.stock.bystore_current(stock_type="stock", *, include_zero=False,
                                changed_since=None, assortment_ids=(), store_ids=(),
                                with_recalculate=False)
-    -> list[StoreStockRow]             # + store_id: UUID | None
+    -> list[StoreStockRow]             # + store_id: str | None
 ```
+
+Ids are `str`, not `UUID`: they are joined with the `id` strings of assortment rows, and the
+doc examples themselves hold ids that do not parse as UUIDs
+(`7944ef04-f831-11e5-7a69-971500188b1`). `stockType` is always sent. A row is read by the key
+of the requested type; a row that names another documented type is read as that type, because
+the `changedSince` example of `§ Параметр changedSince` asks for the default `stock` and shows
+rows with `quantity`. A row with no known type is an error.
 
 - `changed_since` outside "now minus 24 h" to "now" raises `ValueError`.
 - Long id lists are split so each URL stays under the 8 KB header limit (section 2.1); every
@@ -359,6 +368,19 @@ await ms.stock.bystore_current(stock_type="stock", *, include_zero=False,
 `StockPoller` follows the docs' advice: poll with `changedSince` and an overlap (their example
 is every 30 minutes for the past 35), run a full report without `changedSince` at least daily,
 and fall back to a full report whenever the cursor is older than 24 hours.
+
+- `StockPoller(ms.stock, *, by_store=False, stock_type="stock", overlap=5 min,
+  full_every=24 h, assortment_ids=(), store_ids=(), last_poll=None, last_full=None)`;
+  `await poller.poll() -> StockUpdate(rows, full, since, at)`. It does not sleep.
+- A full report asks for `include=zeroLines`: without it an item that ran out would just be
+  missing. `full_every` cannot exceed 24 hours, `overlap` must be under 24 hours.
+- `last_poll` and `last_full` move only after a report was read, and can be saved and passed
+  back. A clock that went back is clamped, so `changedSince` is never in the future.
+
+`join_stock(rows, stock, *, default=None)` returns `(row, value)` pairs. Rows of a report by
+store are summed per item, `None` if any is `None`; mixing stock types is an error. `default`
+is the value for items missing from the report: `0.0` fits a full report, `None` a report with
+`changedSince`.
 
 ### 5.2 Assortment without stock
 
@@ -382,9 +404,17 @@ legacy endpoint, which is to be removed during 2027 (`notifications/new-assortme
   was ignored.
 
 ```python
-ms.assortment.iter(*, filter=None, search=None, group_by=None, limit=1000)
-    -> AsyncIterator[dict[str, Any]]
+ms.assortment.iter(*, filter=None, search=None, group_by=None, order=None, expand=None,
+                   limit=1000, params=None) -> Paginator
 ```
+
+Also checked before sending, from the same page: on one field, like operators combine only as
+one `~=` with one `=~` (`§ Изменения в поведении фильтров`); `type=consignment` needs
+`groupBy=consignment` and `withSubFolders` needs a `productFolder` filter (`§ Атрибуты
+доступные для фильтрации`); `order` cannot use `inTransit`, `minimumBalance`, `quantity`,
+`reserve`, `salePrice` or `stock` (`§ Недоступные сортировки`). The checks read the filter as
+text (`split_conditions`), so they apply to a `Filter` and a raw string alike. The paginator
+sends the beta header with every page, since `nextHref` does not carry it.
 
 ## 6. Customer orders
 
@@ -410,11 +440,22 @@ mid-walk moves to the end and shifts the rest. So the iterator pages by key inst
    `updated>=T;updated<T+1s`, then continue from `T+1s`.
 
 ```python
-orders = ms.customer_orders.iter_updated_since(cursor, filter=None, page_size=1000)
+orders = ms.customer_orders.iter_updated_since(cursor, filter=None, page_size=1000, expand=None)
 async for order in orders:
     ...
 cursor = orders.cursor  # OrderCursor(updated: datetime, seen: frozenset[str]); persist it
+saved = cursor.as_dict()  # {"updated": "YYYY-MM-DD HH:MM:SS", "seen": [...]}
 ```
+
+Details settled while implementing:
+
+- After step 4, the cursor stays on the full second, with all its ids seen, until an order of
+  a later second is read: more orders may still be written in that second. A later run then
+  reads that second again by offset, skipping what it saw.
+- The caller's filter cannot hold `updated`; the cursor sets it.
+- An order changed during the walk comes again with its new `updated`. Offset paging inside
+  one second (step 4) can still skip an order if another order of that second changes during
+  that walk; that needs more than `page_size` orders saved in one second.
 
 Deleted orders do not show up: documents in the trash are excluded unless `isDeleted` is
 filtered (`_general.md § Фильтрация документов`). Use DELETE webhooks for deletions.
@@ -424,7 +465,9 @@ filtered (`_general.md § Фильтрация документов`). Use DELET
 `POST /entity/customerorder`; `organization` and `agent` metas are required (`§ Создать
 Заказ покупателя`). `create(body, *, sync_id=None)` adds a `syncId` (uuid4) unless one is
 given, so a retry returns the same order (section 2.5). More than 1000 positions raises
-`ValueError` (`_restrictions.md § Ограничения на размер данных`; 413).
+`ValueError` (`_restrictions.md § Ограничения на размер данных`; 413). A `syncId` that is not
+a UUID, or one that contradicts `sync_id`, raises `ValueError`. The caller's dict is not
+changed. `get(order_id, *, expand=None)` reads one order.
 
 ### 6.3 Change state
 
@@ -442,7 +485,10 @@ await ms.customer_orders.set_state(order_id, "Отгружен")  # name or stat
 ```
 
 States are cached per client and reloaded once when a name is not found. Each call counts
-toward the PUT-per-entity counter (section 2.6).
+toward the PUT-per-entity counter (section 2.6). `states(*, reload=False) -> list[State]`
+exposes them; `State` is a model of `dictionaries/_states.md § Атрибуты сущности`.
+`set_state` also takes a `State`. A name that no state has, or that two states share, raises
+`LookupError`. Ids are checked against `[0-9A-Za-z-]{1,64}` before they go into a path.
 
 ## 7. Webhooks
 
@@ -468,6 +514,14 @@ or `notes` (`§ Доступные типы сущностей`). The client che
 `ensure(entity_type, action, url)` lists, re-enables a matching disabled webhook, or creates
 one, so a deploy script can run it every time.
 
+Both kinds have `list()`, `get(id)`, `update(id, changes)` (API field names, checked like a
+create), `enable(id)`, `disable(id)`, `delete(id)` and `delete_many(webhooks_or_ids)`, which
+posts metas 1000 per request (`_general.md § Создание и обновление нескольких объектов`).
+`ms.webhooks.create(entity_type, action, url, *, diff_type=None)`,
+`ms.webhook_stocks.create(url, *, report_type="all", stock_type="stock")`. `ensure` with a
+`diff_type` also sets it on a matching webhook. Creates are not resent: a webhook has no
+`syncId`.
+
 ### 7.2 Payloads
 
 MoySklad POSTs JSON to `url?requestId=<id>` with
@@ -491,18 +545,28 @@ suggest a secret path segment in the webhook URL.
 ### 7.3 Receiver helper
 
 ```python
-receiver = WebhookReceiver(ms, dedupe=MemoryDedupe(ttl=600.0))
+receiver = WebhookReceiver(ms, dedupe=MemoryDedupe(), ttl=600.0)
 delivery = await receiver.accept(body: bytes, request_id: str | None)  # None if duplicate
 # answer 204 now; handle `delivery` in a background task or queue
 entity = await receiver.fetch(event)        # GET event.meta.href; None for DELETE
-rows = await receiver.fetch_stock(delivery) # GET reportUrl, weight 5
+rows = await receiver.fetch_stock(delivery.notification)  # GET reportUrl, weight 5
+events = await receiver.receive(body, request_id, fetch=True)  # all of the above
 ```
 
 - `accept` parses and dedupes only, so the handler can answer inside 1500 ms. It is
   framework-agnostic: it takes the raw body and the `requestId` query value.
 - The dedupe key is `requestId`, or a SHA-256 of the body when it is missing. `Dedupe` is a
   protocol with one atomic `async def first_seen(key, ttl) -> bool`, so Redis can back it.
-- `fetch` skips `DELETE` events, since the entity is gone, and checks the href host.
+- `fetch` skips `DELETE` events, since the entity is gone, and checks the href host. An
+  entity that answers 404 was deleted after the event and gives `None`.
+- `fetch_stock` accepts only a `reportUrl` on `/report/stock/all/current` or
+  `/report/stock/bystore/current` under the API root.
+- `receive(body, request_id, *, fetch=False) -> list[ReceivedEvent]` is the one-call form:
+  raw body in, events out, an empty list for a repeat. `Delivery.events` drops exact repeats
+  (same href, action and `updatedFields`) inside one notification, and `fetch=True` reads
+  each href once. A stock notification gives one event with its report rows.
+- A body that is not a webhook raises `WebhookPayloadError` (a `ValueError`) and is not
+  recorded as seen.
 
 ### 7.4 Health check
 
@@ -516,9 +580,13 @@ health.disabled  # webhooks and webhookstocks under the prefix with enabled == F
 await ms.webhooks.health(url_prefix, reenable=True)
 ```
 
-On the receiver side, `WebhookReceiver.stats` records the last day a delivery was accepted.
-`stats.days_without_success()` lets a monitor alert well before MoySklad's seven-of-ten-days
-rule. It only sees deliveries that reached the receiver.
+On the receiver side, `WebhookReceiver.stats` records the last day a delivery was accepted
+(`last_accepted`; repeats count, since they are answered too), and counts accepted, repeated
+and rejected bodies. `stats.days_without_success()` lets a monitor alert well before
+MoySklad's seven-of-ten-days rule. It only sees deliveries that reached the receiver.
+
+`health()` returns `WebhookHealth(url_prefix, webhooks, stock_webhooks, reenabled)` with the
+properties `disabled` and `ok`.
 
 ## 8. Public API and layout
 
@@ -572,7 +640,11 @@ Exported: `MoySklad`, `API_URL`, `AuthKind`, `BasicAuth`, `BearerToken`, `issue_
 `Paginator`, `OrderCursor`, `StockRow`, `StoreStockRow`, `StockPoller`, `join_stock`,
 `Webhook`, `WebhookStock`, `EntityNotification`, `StockNotification`, `WebhookEvent`,
 `WebhookReceiver`, `Dedupe`, `MemoryDedupe`, `WebhookHealth`, `Meta`, `ApiErrorDetail`, the
-exceptions of section 2.7, `__version__`.
+exceptions of section 2.7, `__version__`. Added while implementing: the helper classes
+(`StockReports`, `Assortment`, `CustomerOrders`, `OrderStream`, `Webhooks`, `WebhookStocks`),
+`StockUpdate`, `State`, `AuditContext`, `Delivery`, `ReceivedEvent`, `ReceiverStats`,
+`WebhookPayloadError`, `parse_webhook`, and the literal types `StockType`, `GroupBy`,
+`Action`, `DiffType` and `ReportType`.
 
 ```
 src/aiomoysklad/
@@ -587,9 +659,8 @@ src/aiomoysklad/
   _client.py       MoySklad, issue_user_token, URL and header handling
   _pagination.py   Paginator
   _filters.py      Filter
-  _models.py       Meta, ApiErrorDetail, StockRow, StoreStockRow, Webhook, WebhookStock,
-                   payload models
-  _stock.py        StockReports, StockPoller, join_stock
+  _models.py       Meta, ApiErrorDetail, State, Webhook, WebhookStock, payload models
+  _stock.py        StockRow, StoreStockRow, StockReports, StockPoller, join_stock
   _assortment.py   Assortment
   _orders.py       CustomerOrders, OrderCursor
   _webhooks.py     Webhooks, WebhookStocks, WebhookHealth
