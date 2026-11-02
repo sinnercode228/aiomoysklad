@@ -124,8 +124,8 @@ class MoySklad:
             product = await ms.get("/entity/product/7944ef04-f831-11e5-7a69-971500188b19")
 
     Each request goes through, in order: the :class:`~aiomoysklad.ErrorGuard`, the
-    :class:`~aiomoysklad.ConcurrencyLimit`, and the :class:`~aiomoysklad.RateLimiter`, which
-    takes the request's weight right before it is sent.
+    :class:`~aiomoysklad.ConcurrencyLimit`, the :class:`~aiomoysklad.RateLimiter`, which
+    takes the request's weight, and the guard once more right before it is sent.
 
     Args:
         auth: :class:`~aiomoysklad.BasicAuth` or :class:`~aiomoysklad.BearerToken`; its kind
@@ -393,14 +393,22 @@ class MoySklad:
         method = request.method
         policy = self.retry
         retries = 0
+        url, entity, body = str(request.url), request.url.path, request.content or None
         while True:
-            key = self.guard.before_send(
-                method, str(request.url), entity=request.url.path, body=request.content or None
-            )
+            # A refusal here spends nothing.
+            self.guard.check(method, url, entity=entity, body=body)
             try:
                 async with self.concurrency:
                     await self.limiter.acquire(weight)
-                    response = await self.http.send(request, auth=None, follow_redirects=False)
+                    # Checked again, and counted, when the request leaves: requests queued on
+                    # the cap or behind a limiter pause passed the first check before the ones
+                    # ahead of them were answered.
+                    key = self.guard.before_send(method, url, entity=entity, body=body)
+                    try:
+                        response = await self.http.send(request, auth=None, follow_redirects=False)
+                    except BaseException:
+                        self.guard.record(key, None)
+                        raise
             except httpx.TransportError as exc:
                 retryable = may_resend or isinstance(exc, _NOT_SENT)
                 if retryable and retries < policy.max_retries:

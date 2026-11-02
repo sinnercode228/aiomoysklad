@@ -217,8 +217,14 @@ at debug level, so the real weight of an endpoint can be read off a live run.
 | 429 responses | more than 200 per minute | 150 |
 | PUT requests to one entity (same path) | more than 100 per minute | 75 |
 
-The stops are configurable but cannot be set above the documented values. The guard sits
-before the limiter, so a request it refuses spends no units. It is shared like the limiter.
+The stops are configurable but cannot be set above the documented values. The guard checks
+twice. The first check runs before the concurrency cap and the limiter and counts nothing, so
+a request refused there spends no units. The second runs right before the request leaves,
+after the cap and the limiter: requests queued behind the cap or a limiter pause would all
+have passed the first check before the ones ahead of them were answered. PUTs are counted at
+that second check, and a request sent but not yet answered counts as a would-be failure and a
+would-be 429 until its answer comes. A request refused at the second check has already taken
+its units from the basket. The guard is shared like the limiter.
 Getting access back needs MoySklad support (same section), which is why the guard fails
 closed.
 

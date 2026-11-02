@@ -193,3 +193,53 @@ def test_the_repr_shows_the_stops() -> None:
     assert repr(ErrorGuard()) == (
         "ErrorGuard(identical_errors=150, too_many_requests=150, puts_per_entity=75)"
     )
+
+
+def test_requests_in_flight_count_as_would_be_failures() -> None:
+    clock = FakeClock()
+    guard = guard_with(clock, identical_errors=2)
+    url = f"{API}/entity/product"
+    first = guard.before_send("GET", url, entity="/entity/product", body=None)
+    guard.before_send("GET", url, entity="/entity/product", body=None)
+    assert guard.in_flight() == 2
+    with pytest.raises(GuardTrippedError, match="2 in flight") as caught:
+        guard.check("GET", url, entity="/entity/product", body=None)
+    assert caught.value.counter == "identical_errors"
+    assert caught.value.retry_after == pytest.approx(60.0)
+    guard.record(first, 200)  # one answered fine: its place is free again
+    assert guard.in_flight() == 1
+    guard.check("GET", url, entity="/entity/product", body=None)
+
+
+def test_requests_in_flight_count_as_would_be_429s() -> None:
+    clock = FakeClock()
+    guard = guard_with(clock, too_many_requests=2, identical_errors=200)
+    send(guard, 429, path="/entity/a")
+    guard.before_send("GET", f"{API}/entity/b", entity="/entity/b", body=None)
+    with pytest.raises(GuardTrippedError) as caught:
+        guard.check("GET", f"{API}/entity/c", entity="/entity/c", body=None)
+    assert caught.value.counter == "too_many_requests"
+    assert caught.value.retry_after == pytest.approx(60.0)
+
+
+def test_the_early_check_counts_nothing() -> None:
+    clock = FakeClock()
+    guard = guard_with(clock, puts_per_entity=1)
+    url = f"{API}{ORDER}"
+    for _ in range(3):
+        guard.check("PUT", url, entity=ORDER, body=None)
+    assert guard.in_flight() == 0
+    guard.before_send("PUT", url, entity=ORDER, body=None)
+    with pytest.raises(GuardTrippedError, match="puts_per_entity"):
+        guard.check("PUT", url, entity=ORDER, body=None)
+
+
+def test_an_unanswered_request_only_leaves_the_in_flight_count() -> None:
+    clock = FakeClock()
+    guard = guard_with(clock, identical_errors=1)
+    url = f"{API}/entity/product"
+    key = guard.before_send("GET", url, entity="/entity/product", body=None)
+    guard.record(key, None)
+    assert guard.in_flight() == 0
+    assert guard.tracked_keys() == 0
+    guard.check("GET", url, entity="/entity/product", body=None)
