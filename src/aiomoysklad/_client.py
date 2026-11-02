@@ -19,6 +19,7 @@ from ._auth import Auth, BasicAuth
 from ._errors import MoySkladError, NetworkError, error_from_response, parse_errors
 from ._filters import Filter
 from ._guard import ErrorGuard
+from ._orders import CustomerOrders
 from ._pagination import MAX_LIMIT, Paginator, list_params
 from ._ratelimit import ConcurrencyLimit, RateLimiter
 from ._retry import RateHeaders, RetryPolicy
@@ -148,6 +149,7 @@ class MoySklad:
     Attributes:
         stock: The short stock reports, :class:`~aiomoysklad.StockReports`.
         assortment: The assortment without stock, :class:`~aiomoysklad.Assortment`.
+        customer_orders: Customer orders, :class:`~aiomoysklad.CustomerOrders`.
     """
 
     def __init__(
@@ -188,6 +190,7 @@ class MoySklad:
         self._warned_deprecated = False
         self.stock = StockReports(self)
         self.assortment = Assortment(self)
+        self.customer_orders = CustomerOrders(self)
 
     def __repr__(self) -> str:
         return f"MoySklad(base_url={self.base_url!r}, kind={self.auth.kind.name})"
