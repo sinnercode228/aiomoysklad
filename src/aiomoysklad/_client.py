@@ -16,7 +16,9 @@ import httpx
 
 from ._auth import Auth, BasicAuth
 from ._errors import MoySkladError, NetworkError, error_from_response, parse_errors
+from ._filters import Filter
 from ._guard import ErrorGuard
+from ._pagination import MAX_LIMIT, Paginator, list_params
 from ._ratelimit import ConcurrencyLimit, RateLimiter
 from ._retry import RateHeaders, RetryPolicy
 from ._time import moscow_today
@@ -245,6 +247,42 @@ class MoySklad:
             joined = f"{query}&{extra}" if query else extra
             target = target.copy_with(query=joined.encode("ascii"))
         return target
+
+    def iter_rows(
+        self,
+        path: str,
+        *,
+        filter: Filter | str | None = None,
+        order: str | None = None,
+        search: str | None = None,
+        expand: str | Sequence[str] | None = None,
+        limit: int = MAX_LIMIT,
+        params: Params | None = None,
+    ) -> Paginator:
+        """Iterate over every row of a collection, following ``meta.nextHref``.
+
+        ::
+
+            async for order in ms.iter_rows("/entity/customerorder", order="updated,asc"):
+                ...
+
+        Args:
+            path: The collection, such as ``/entity/customerorder``.
+            filter: A :class:`~aiomoysklad.Filter` or a ready ``filter`` string.
+            order: The ``order`` parameter, such as ``"updated,asc;id,asc"``.
+            search: The ``search`` parameter.
+            expand: Fields to expand, as one comma-separated string or a list.
+            limit: Rows per page, 1 to 1000; at most 100 with ``expand``.
+            params: Other query parameters of the first request.
+
+        Raises:
+            ValueError: ``limit`` is out of range, ``expand`` comes with a limit over 100 (the
+                server would silently drop it), or ``expand`` nests deeper than 3 levels.
+        """
+        query = list_params(
+            filter=filter, order=order, search=search, expand=expand, limit=limit, params=params
+        )
+        return Paginator(self, path, query)
 
     async def get(self, href: str, *, params: Params | None = None) -> Any:
         """Send a ``GET`` to a path or href and return the decoded answer."""
