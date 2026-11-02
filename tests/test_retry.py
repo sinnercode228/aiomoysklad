@@ -143,3 +143,7 @@ def test_unsafe_writes_can_be_resent_on_request() -> None:
 )
 def test_sync_ids_are_recognized(body: Any, expected: bool) -> None:
     assert has_sync_ids(body) is expected
+
+
+def test_rate_headers_can_be_read_from_a_plain_mapping() -> None:
+    assert RateHeaders.from_headers({"X-Lognex-Reset": "250"}).reset == pytest.approx(0.25)

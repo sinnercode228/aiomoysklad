@@ -187,3 +187,9 @@ def test_old_keys_do_not_pile_up() -> None:
     clock.now = 61.0
     send(guard, 404, path="/entity/product/last")
     assert guard.tracked_keys() <= 1
+
+
+def test_the_repr_shows_the_stops() -> None:
+    assert repr(ErrorGuard()) == (
+        "ErrorGuard(identical_errors=150, too_many_requests=150, puts_per_entity=75)"
+    )

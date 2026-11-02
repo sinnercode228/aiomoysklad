@@ -293,3 +293,10 @@ def test_a_redirect_without_a_location_is_still_a_redirect_error() -> None:
 def test_the_detail_model_reads_the_documented_names() -> None:
     detail = ApiErrorDetail.model_validate({"error": "e", "moreInfo": "https://x"})
     assert detail.more_info == "https://x"
+
+
+def test_an_unparseable_location_is_not_quoted() -> None:
+    error = error_from_response(answer(301, headers={"Location": "https://[::1"}))
+    assert isinstance(error, RedirectError)
+    assert error.location == "https://[::1"
+    assert str(error).endswith(": redirected")
