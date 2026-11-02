@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from aiomoysklad import Filter, Meta
+from aiomoysklad._filters import split_conditions
 from aiomoysklad._time import MSK
 
 API = "https://api.moysklad.ru/api/remap/1.2"
@@ -212,3 +213,43 @@ def test_equal_filters_compare_equal() -> None:
 def test_dates_are_moscow_time_down_to_the_second() -> None:
     moment = datetime(2026, 11, 1, 23, 59, 59, 999_999, tzinfo=timezone(timedelta(hours=-5)))
     assert str(Filter().ge("updated", moment)) == "updated>=2026-11-02 07:59:59"
+
+
+@pytest.mark.parametrize(
+    ("text", "conditions"),
+    [
+        ("", []),
+        ("name~див", [("name", "~", "див")]),
+        ("code=~a;code~=b", [("code", "=~", "a"), ("code", "~=", "b")]),
+        (
+            "updated>=2019-07-10 12:00:00;updated<=2019-07-12 12:00:00",
+            [("updated", ">=", "2019-07-10 12:00:00"), ("updated", "<=", "2019-07-12 12:00:00")],
+        ),
+        ("barcode!=;archived=false", [("barcode", "!=", ""), ("archived", "=", "false")]),
+        (r"name~a\;b;id=1", [("name", "~", r"a\;b"), ("id", "=", "1")]),
+        (
+            "https://api.moysklad.ru/api/remap/1.2/entity/product/metadata/attributes/b8=color",
+            [
+                (
+                    "https://api.moysklad.ru/api/remap/1.2/entity/product/metadata/attributes/b8",
+                    "=",
+                    "color",
+                )
+            ],
+        ),
+        ("garbage", [("garbage", "", "")]),
+    ],
+)
+def test_a_filter_string_splits_into_conditions(
+    text: str, conditions: list[tuple[str, str, str]]
+) -> None:
+    assert split_conditions(text) == conditions
+
+
+def test_a_built_filter_splits_back_into_its_conditions() -> None:
+    f = Filter().ne("barcode", "1").contains("name", "a;b").le("sum", 5)
+    assert split_conditions(str(f)) == [
+        ("barcode", "!=", "1"),
+        ("name", "~", r"a\;b"),
+        ("sum", "<=", "5"),
+    ]

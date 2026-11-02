@@ -23,6 +23,7 @@ The client percent-encodes the whole value when it sends it.
 from __future__ import annotations
 
 import math
+import re
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -32,13 +33,17 @@ from typing import Any
 
 from ._time import format_datetime
 
-__all__ = ["Filter"]
+__all__ = ["Filter", "split_conditions"]
 
 _EQ = "="
 _NE = "!="
 _COMPARISONS = frozenset({">", "<", ">=", "<="})
 _LIKE = frozenset({"~", "~=", "=~"})
 _FIELD_FORBIDDEN = frozenset(";=<>!~")
+
+# A condition is a field without operator characters, then the longest operator that fits.
+_CONDITION = re.compile(r"([^=<>!~]*)(!=|~=|=~|>=|<=|=|>|<|~)(.*)", re.S)
+_SEPARATOR = re.compile(r"(?<!\\);")
 
 
 @dataclass(frozen=True)
@@ -262,3 +267,21 @@ def _check_conflicts(conditions: tuple[_Condition, ...]) -> None:
     if clash:
         msg = f"= and a comparison on the same field are an error in MoySklad: {sorted(clash)}"
         raise ValueError(msg)
+
+
+def split_conditions(text: str) -> list[tuple[str, str, str]]:
+    r"""Split a ``filter`` string into ``(field, operator, value)`` triples.
+
+    Conditions are separated by ``;`` that is not escaped as ``\;``; values keep their
+    escapes. A part without an operator comes back as ``(part, "", "")``. Used to check a
+    filter against the rules of one endpoint, for filters built here and raw strings alike.
+    """
+    conditions: list[tuple[str, str, str]] = []
+    for part in _SEPARATOR.split(text) if text else []:
+        match = _CONDITION.fullmatch(part)
+        if match is None:
+            conditions.append((part, "", ""))
+        else:
+            field, operator, value = match.groups()
+            conditions.append((field, operator, value))
+    return conditions
