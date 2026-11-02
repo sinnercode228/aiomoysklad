@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 from collections import OrderedDict
 from collections.abc import Callable
@@ -34,6 +35,8 @@ from ._time import moscow_today
 
 if TYPE_CHECKING:
     from ._client import MoySklad
+
+logger = logging.getLogger("aiomoysklad")
 
 __all__ = [
     "Dedupe",
@@ -98,6 +101,11 @@ class Dedupe(Protocol):
 class MemoryDedupe:
     """An in-process :class:`Dedupe`, enough for one worker.
 
+    Once ``max_keys`` keys are kept, the oldest one goes even if its ttl has not run out, so
+    a repeat of that delivery is taken as new. The first time that happens a warning is
+    logged; raise ``max_keys`` or use a shared store then. With the defaults (100 000 keys,
+    600 s) it takes about 166 deliveries a second.
+
     Args:
         max_keys: The most keys kept; the oldest go first.
         clock: A monotonic clock in seconds.
@@ -112,6 +120,7 @@ class MemoryDedupe:
         self.max_keys = max_keys
         self._clock = clock
         self._expiry: OrderedDict[str, float] = OrderedDict()
+        self._warned_full = False
 
     def __len__(self) -> int:
         return len(self._expiry)
@@ -130,6 +139,13 @@ class MemoryDedupe:
             oldest, at = next(iter(self._expiry.items()))
             if at > now and len(self._expiry) < self.max_keys:
                 break
+            if at > now and not self._warned_full:
+                self._warned_full = True
+                logger.warning(
+                    "MemoryDedupe is full at max_keys=%d: dropping keys before their ttl, so "
+                    "repeated deliveries can get through",
+                    self.max_keys,
+                )
             del self._expiry[oldest]
         self._expiry[key] = now + ttl
         return True
@@ -226,7 +242,7 @@ class WebhookReceiver:
         client: The client that fetches entities and reports; only :meth:`fetch`,
             :meth:`fetch_stock` and ``receive(fetch=True)`` need it.
         dedupe: Where delivery keys are kept; by default an in-process
-            :class:`MemoryDedupe`.
+            :class:`MemoryDedupe`, which lets repeats through once it is full.
         ttl: Seconds a key is kept. MoySklad's retries come right after each other, so a few
             minutes are enough.
         today: Returns the Moscow date, for :attr:`stats`.
@@ -271,7 +287,8 @@ class WebhookReceiver:
             request_id: The ``requestId`` query parameter.
 
         Returns:
-            The delivery, or ``None`` when it was seen before.
+            The delivery, or ``None`` when it was seen before and the dedupe store still
+            holds its key (see :class:`MemoryDedupe` for when it does not).
 
         Raises:
             WebhookPayloadError: The body is not a webhook; it is not recorded as seen.

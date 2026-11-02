@@ -7,6 +7,7 @@ dictionaries/_webhookstock.md § Описание вебхука на измен
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date
 from typing import Any
 
@@ -157,6 +158,19 @@ async def test_the_memory_dedupe_holds_a_bounded_number_of_keys() -> None:
     assert len(dedupe) == 2
     assert await dedupe.first_seen("a", 60.0)  # the oldest key was dropped
     assert not await dedupe.first_seen("c", 60.0)
+
+
+async def test_a_full_dedupe_drops_an_unexpired_key_and_says_so_once(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    dedupe = MemoryDedupe(max_keys=2)
+    with caplog.at_level(logging.WARNING, logger="aiomoysklad"):
+        for key in "abcd":
+            assert await dedupe.first_seen(key, 600.0)
+        # "a" was dropped before its ttl ran out, so a repeat of it gets through.
+        assert await dedupe.first_seen("a", 600.0)
+    warnings = [r for r in caplog.records if "max_keys" in r.getMessage()]
+    assert len(warnings) == 1
 
 
 async def test_a_custom_dedupe_store_is_used() -> None:
