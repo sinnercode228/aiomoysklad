@@ -545,6 +545,7 @@ class MoySklad:
         webhook_disable_prefixes: Sequence[str] = (),
         timeout: float = 30.0,
         http: httpx.AsyncClient | None = None,
+        today: Callable[[], date] = moscow_today,  # Moscow date for the weight table
     ) -> None: ...
     async def request(
         self,
