@@ -407,8 +407,11 @@ class CustomerOrders:
         the second (``_general.md § Формат даты и времени``). Only when a whole page falls
         within one second is that second read on by ``offset``.
 
-        Deleted orders do not come: documents in the trash are left out unless ``isDeleted``
-        is filtered (``_general.md § Фильтрация документов``). Use DELETE webhooks for them.
+        Orders in the trash presumably do not come. ``_general.md § Фильтрация документов``
+        says ``isDeleted=true`` returns the documents in the trash, ``isDeleted=false`` the
+        ones not deleted, and both together all of them, but not what comes without the
+        filter (``docs/design.md``, open question 8). Pass ``Filter().eq("isDeleted", False)``
+        to be sure, and use DELETE webhooks to learn about deleted orders.
 
         Args:
             since: A moment (naive means Moscow time), or a cursor from an earlier run.

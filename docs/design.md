@@ -467,8 +467,10 @@ Details settled while implementing:
   one second (step 4) can still skip an order if another order of that second changes during
   that walk; that needs more than `page_size` orders saved in one second.
 
-Deleted orders do not show up: documents in the trash are excluded unless `isDeleted` is
-filtered (`_general.md § Фильтрация документов`). Use DELETE webhooks for deletions.
+Orders in the trash presumably do not show up: `_general.md § Фильтрация документов` says
+what `isDeleted=true`, `isDeleted=false` and both together return, but not what a list
+without the filter returns (open question 8). A caller can pass `isDeleted=false` to be sure.
+Use DELETE webhooks for deletions.
 
 ### 6.2 Create
 
@@ -700,3 +702,6 @@ documented limit or header cites the doc file in a comment.
 6. Is a request answered with 429 never processed? Until confirmed, POST without `syncId` is
    not resent.
 7. How is a backslash in a filter value read? v0.1 refuses a value ending in `\`.
+8. Are documents in the trash left out of a list when `isDeleted` is not filtered?
+   `_general.md § Фильтрация документов` describes `isDeleted=true`, `false` and both, but no
+   default. The order stream's docstring presumes they are left out.
