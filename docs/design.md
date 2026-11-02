@@ -689,7 +689,8 @@ src/aiomoysklad/
   _orders.py       CustomerOrders, OrderCursor
   _webhooks.py     Webhooks, WebhookStocks, WebhookHealth
   _receiver.py     WebhookReceiver, Dedupe, MemoryDedupe
-tests/             one test module per source module; payloads copied from the doc examples
+tests/             one test module per source module; payloads from the doc examples, error
+                   titles from _errors.md with their placeholders filled in
 ```
 
 Tests never touch the network: `httpx.MockTransport` or `respx`, with a fake clock and sleep

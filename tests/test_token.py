@@ -24,7 +24,15 @@ async def test_a_new_token_is_issued_with_basic_auth(mock: respx.MockRouter) -> 
 async def test_wrong_credentials_raise_auth_error(mock: respx.MockRouter) -> None:
     mock.post("/security/token").respond(
         401,
-        json={"errors": [{"error": "Ошибка аутентификации: Неправильный пароль", "code": 1056}]},
+        # _errors.md, 1056, with the 401 text of _general.md § Обработка ошибок filled in.
+        json={
+            "errors": [
+                {
+                    "error": "Ошибка аутентификации: Имя и/или пароль пользователя указаны неверно",
+                    "code": 1056,
+                }
+            ]
+        },
     )
     with pytest.raises(AuthError):
         await issue_user_token("admin@example", "wrong")

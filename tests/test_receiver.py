@@ -200,7 +200,19 @@ async def test_receive_can_fetch_each_entity_once(ms: MoySklad, mock: respx.Mock
     other = f"{API}/entity/product/00000000-0000-0000-0000-000000000001"
     product = mock.get(PRODUCT.removeprefix(API)).respond(200, json={"name": "Товар"})
     gone = mock.get(other.removeprefix(API)).respond(
-        404, json={"errors": [{"error": "Объект не найден", "code": 1021}]}
+        404,
+        json={
+            "errors": [
+                {
+                    # _errors.md, 1021.
+                    "error": (
+                        "Объект с типом 'product' и идентификатором "
+                        "'00000000-0000-0000-0000-000000000001' не найден"
+                    ),
+                    "code": 1021,
+                }
+            ]
+        },
     )
     payload = entity_payload(
         event(PRODUCT, updatedFields=["name"]),

@@ -138,7 +138,8 @@ async def test_a_clock_that_went_back_does_not_ask_for_the_future(
 async def test_a_failed_poll_keeps_the_state(
     ms: MoySklad, mock: respx.MockRouter, now: Clock
 ) -> None:
-    mock.get(ALL).respond(403, json={"errors": [{"error": "Нет прав", "code": 1016}]})
+    denied = "Доступ запрещен: у вас нет прав на просмотр данного объекта"  # _errors.md, 1016
+    mock.get(ALL).respond(403, json={"errors": [{"error": denied, "code": 1016}]})
     poller = StockPoller(ms.stock)
     with pytest.raises(ForbiddenError):
         await poller.poll()
