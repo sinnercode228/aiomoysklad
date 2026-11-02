@@ -1,4 +1,4 @@
-"""The weighted 3-second basket.
+"""The weighted 3-second basket, and the cap on requests in flight.
 
 ``_restrictions.md § Лимит запросов за 3-секундный период``: every user and every solution has
 a basket of 45 units "handed out every 3 seconds", and each request takes its weight out of it
@@ -14,10 +14,16 @@ import time
 import weakref
 from collections import deque
 from collections.abc import Awaitable, Callable
+from types import TracebackType
 
 from ._weights import CAPACITY, WINDOW
 
-__all__ = ["RateLimiter"]
+__all__ = ["ACCOUNT_PARALLEL_LIMIT", "PARALLEL_LIMIT", "ConcurrencyLimit", "RateLimiter"]
+
+# _restrictions.md § Лимиты и ограничения в JSON API: no more than 5 parallel requests from
+# one user or solution, and no more than 20 from an account.
+PARALLEL_LIMIT = 5
+ACCOUNT_PARALLEL_LIMIT = 20
 
 
 class RateLimiter:
@@ -140,3 +146,77 @@ class RateLimiter:
             self._queue = asyncio.Lock()
             self._queue_loop = weakref.ref(loop)
         return self._queue
+
+
+class ConcurrencyLimit:
+    """At most ``limit`` requests in flight; use it as ``async with limit:``.
+
+    Over-parallel requests are answered 429 with error 1073, and the rate limit headers do not
+    reflect them (``_general.md § Обработка ошибок``). The account-wide cap of 20 cannot be
+    enforced from one process; one object can be shared by several clients, like the rate
+    limiter. Waiters get slots in arrival order.
+
+    Args:
+        limit: Requests in flight, from 1 to 20. The default 5 is the cap per user or
+            solution.
+    """
+
+    def __init__(self, limit: int = PARALLEL_LIMIT) -> None:
+        if not 1 <= limit <= ACCOUNT_PARALLEL_LIMIT:
+            msg = f"limit must be between 1 and {ACCOUNT_PARALLEL_LIMIT}, got {limit}"
+            raise ValueError(msg)
+        self._limit = int(limit)
+        self._in_flight = 0
+        self._waiters: deque[asyncio.Future[None]] = deque()
+
+    @property
+    def limit(self) -> int:
+        """Requests allowed in flight."""
+        return self._limit
+
+    @property
+    def in_flight(self) -> int:
+        """Slots taken right now."""
+        return self._in_flight
+
+    def __repr__(self) -> str:
+        return f"ConcurrencyLimit({self._limit})"
+
+    async def acquire(self) -> None:
+        """Wait for a free slot and take it."""
+        if self._in_flight < self._limit and not self._waiters:
+            self._in_flight += 1
+            return
+        waiter = asyncio.get_running_loop().create_future()
+        self._waiters.append(waiter)
+        try:
+            await waiter
+        except asyncio.CancelledError:
+            if waiter.done() and not waiter.cancelled():
+                self.release()  # the slot was handed over just before the cancel: pass it on
+            else:
+                self._waiters.remove(waiter)
+            raise
+
+    def release(self) -> None:
+        """Give a slot back, handing it straight to the oldest waiter if there is one."""
+        if self._in_flight <= 0:
+            msg = "release() called more often than acquire()"
+            raise RuntimeError(msg)
+        while self._waiters:
+            waiter = self._waiters.popleft()
+            if not waiter.done():
+                waiter.set_result(None)  # the slot changes hands; in_flight stays the same
+                return
+        self._in_flight -= 1
+
+    async def __aenter__(self) -> None:
+        await self.acquire()
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self.release()

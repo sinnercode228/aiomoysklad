@@ -18,7 +18,7 @@ from ._errors import (
     ValidationError,
 )
 from ._models import ApiErrorDetail, Meta
-from ._ratelimit import RateLimiter
+from ._ratelimit import ConcurrencyLimit, RateLimiter
 from ._version import __version__
 from ._weights import request_weight
 
@@ -29,6 +29,7 @@ __all__ = [
     "AuthKind",
     "BasicAuth",
     "BearerToken",
+    "ConcurrencyLimit",
     "ConflictError",
     "ForbiddenError",
     "GuardTrippedError",
