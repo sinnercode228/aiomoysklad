@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aiomoysklad"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Async toolkit for MoySklad JSON API 1.2 integrations: weighted rate limiting, retries, pagination, filters, stock, orders and webhooks"
 readme = "README.md"
 license = "MIT"
