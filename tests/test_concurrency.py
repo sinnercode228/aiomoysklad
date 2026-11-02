@@ -6,6 +6,8 @@ import pytest
 
 from aiomoysklad import ConcurrencyLimit
 
+from .clock import run_in_new_loop
+
 
 async def run_many(limit: ConcurrencyLimit, count: int) -> int:
     peak = 0
@@ -104,8 +106,8 @@ async def test_a_waiter_cancelled_after_it_was_handed_a_slot_passes_it_on() -> N
 
 def test_one_cap_serves_one_event_loop_after_another() -> None:
     limit = ConcurrencyLimit(2)
-    assert asyncio.run(run_many(limit, 6)) == 2
-    assert asyncio.run(run_many(limit, 6)) == 2
+    assert run_in_new_loop(run_many(limit, 6)) == 2
+    assert run_in_new_loop(run_many(limit, 6)) == 2
 
 
 @pytest.mark.parametrize("bad", [0, -1, 21])

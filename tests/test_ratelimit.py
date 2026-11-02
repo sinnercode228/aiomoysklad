@@ -8,7 +8,7 @@ import pytest
 from aiomoysklad import RateLimiter
 from aiomoysklad._retry import RateHeaders
 
-from .clock import FakeClock
+from .clock import FakeClock, run_in_new_loop
 
 
 def limiter_with(clock: FakeClock, capacity: int = 45, window: float = 3.0) -> RateLimiter:
@@ -170,8 +170,8 @@ def test_one_limiter_serves_one_event_loop_after_another() -> None:
     async def burst() -> None:
         await asyncio.gather(*(limiter.acquire(1) for _ in range(5)))
 
-    asyncio.run(burst())
-    asyncio.run(burst())
+    run_in_new_loop(burst())
+    run_in_new_loop(burst())
     assert clock.now == pytest.approx(3.0)
 
 
