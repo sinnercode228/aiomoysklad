@@ -11,7 +11,18 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-__all__ = ["ApiErrorDetail", "Meta", "MoySkladModel", "State", "Webhook", "WebhookStock"]
+__all__ = [
+    "ApiErrorDetail",
+    "AuditContext",
+    "EntityNotification",
+    "Meta",
+    "MoySkladModel",
+    "State",
+    "StockNotification",
+    "Webhook",
+    "WebhookEvent",
+    "WebhookStock",
+]
 
 
 class MoySkladModel(BaseModel):
@@ -142,3 +153,66 @@ class WebhookStock(MoySkladModel):
     url: str
     enabled: bool
     author_application: dict[str, Any] | None = Field(default=None, alias="authorApplication")
+
+
+class WebhookEvent(MoySkladModel):
+    """One event of an entity webhook (``dictionaries/_webhook.md § Атрибуты сущности событие``).
+
+    Attributes:
+        meta: Meta of the changed entity; fetch its ``href`` for the current state.
+        action: ``CREATE``, ``UPDATE``, ``DELETE`` or ``PROCESSED``.
+        account_id: The account's id.
+        updated_fields: The fields the user changed; only for a webhook with
+            ``diffType=FIELDS`` and ``action=UPDATE``.
+    """
+
+    meta: Meta
+    action: str
+    account_id: str | None = Field(default=None, alias="accountId")
+    updated_fields: list[str] | None = Field(default=None, alias="updatedFields")
+
+
+class AuditContext(MoySkladModel):
+    """The audit context of an entity webhook (``§ Атрибуты сущности контекст аудита``).
+
+    Attributes:
+        meta: Meta of the audit record.
+        uid: Login of the employee who made the change.
+        moment: When the change was made, ``YYYY-MM-DD HH:MM:SS`` in Moscow time.
+    """
+
+    meta: Meta
+    uid: str | None = None
+    moment: str | None = None
+
+
+class EntityNotification(MoySkladModel):
+    """The body MoySklad posts for an entity webhook.
+
+    From ``dictionaries/_webhook.md § Пример вебхука``.
+
+    Attributes:
+        events: The events; one notification may hold several.
+        audit_context: The audit context of the events.
+    """
+
+    events: list[WebhookEvent]
+    audit_context: AuditContext | None = Field(default=None, alias="auditContext")
+
+
+class StockNotification(MoySkladModel):
+    """The body MoySklad posts for a stock webhook.
+
+    From ``dictionaries/_webhookstock.md § Атрибуты отправляемого сообщения``.
+
+    Attributes:
+        account_id: The account's id.
+        stock_type: ``stock``.
+        report_type: ``all`` or ``bystore``.
+        report_url: The short report of the items that changed, with ``changedSince``.
+    """
+
+    account_id: str | None = Field(default=None, alias="accountId")
+    stock_type: str = Field(alias="stockType")
+    report_type: str = Field(alias="reportType")
+    report_url: str = Field(alias="reportUrl")
