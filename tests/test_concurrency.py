@@ -104,6 +104,35 @@ async def test_a_waiter_cancelled_after_it_was_handed_a_slot_passes_it_on() -> N
     assert limit.in_flight == 1
 
 
+async def test_a_waiter_cancelled_and_skipped_by_release_raises_the_cancel() -> None:
+    limit = ConcurrencyLimit(1)
+    await limit.acquire()
+    waiting = asyncio.create_task(limit.acquire())
+    await asyncio.sleep(0)
+    waiting.cancel()  # cancels the parked future at once
+    limit.release()  # runs before the waiter resumes: skips the cancelled future
+    with pytest.raises(asyncio.CancelledError):
+        await waiting
+    assert limit.in_flight == 0
+
+
+async def test_many_waiters_cancelled_together_all_raise_the_cancel() -> None:
+    limit = ConcurrencyLimit(2)
+    gate = asyncio.Event()
+
+    async def call() -> None:
+        async with limit:
+            await gate.wait()
+
+    tasks = [asyncio.create_task(call()) for _ in range(20)]
+    await asyncio.sleep(0)
+    for task in tasks:
+        task.cancel()
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    assert {type(result) for result in results} == {asyncio.CancelledError}
+    assert limit.in_flight == 0
+
+
 def test_one_cap_serves_one_event_loop_after_another() -> None:
     limit = ConcurrencyLimit(2)
     assert run_in_new_loop(run_many(limit, 6)) == 2

@@ -9,6 +9,7 @@ a basket of 45 units "handed out every 3 seconds", and each request takes its we
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import math
 import time
 import weakref
@@ -232,7 +233,9 @@ class ConcurrencyLimit:
             if waiter.done() and not waiter.cancelled():
                 self.release()  # the slot was handed over just before the cancel: pass it on
             else:
-                self._waiters.remove(waiter)
+                # release() may already have popped and skipped the cancelled future.
+                with contextlib.suppress(ValueError):
+                    self._waiters.remove(waiter)
             raise
 
     def release(self) -> None:
