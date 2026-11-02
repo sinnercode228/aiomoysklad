@@ -258,6 +258,7 @@ class MoySklad:
         expand: str | Sequence[str] | None = None,
         limit: int = MAX_LIMIT,
         params: Params | None = None,
+        headers: Mapping[str, str] | None = None,
     ) -> Paginator:
         """Iterate over every row of a collection, following ``meta.nextHref``.
 
@@ -274,6 +275,7 @@ class MoySklad:
             expand: Fields to expand, as one comma-separated string or a list.
             limit: Rows per page, 1 to 1000; at most 100 with ``expand``.
             params: Other query parameters of the first request.
+            headers: Extra headers sent with every page, such as a beta feature tag.
 
         Raises:
             ValueError: ``limit`` is out of range, ``expand`` comes with a limit over 100 (the
@@ -282,7 +284,7 @@ class MoySklad:
         query = list_params(
             filter=filter, order=order, search=search, expand=expand, limit=limit, params=params
         )
-        return Paginator(self, path, query)
+        return Paginator(self, path, query, headers=headers)
 
     async def get(self, href: str, *, params: Params | None = None) -> Any:
         """Send a ``GET`` to a path or href and return the decoded answer."""

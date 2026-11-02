@@ -84,17 +84,25 @@ class Paginator:
     ``async for row in paginator`` yields each row; :meth:`pages` yields each page body. The
     first request carries the query; after that the paginator follows ``meta.nextHref`` as
     the server gave it, only when it stays under the API root, and stops when it is missing.
-    Iterating again starts over from the first page.
+    Extra headers, if any, go with every page. Iterating again starts over from the first page.
 
     Attributes:
         size: ``meta.size`` of the first page, the number of rows in the whole collection;
             ``None`` until the first page has been read.
     """
 
-    def __init__(self, client: MoySklad, path: str, params: Mapping[str, Any]) -> None:
+    def __init__(
+        self,
+        client: MoySklad,
+        path: str,
+        params: Mapping[str, Any],
+        *,
+        headers: Mapping[str, str] | None = None,
+    ) -> None:
         self._client = client
         self._path = path
         self._params = dict(params)
+        self._headers = dict(headers or {})
         self.size: int | None = None
 
     def __repr__(self) -> str:
@@ -115,9 +123,11 @@ class Paginator:
         first = True
         while True:
             if href is None:
-                body = await self._client.get(self._path, params=self._params)
+                body = await self._client.request(
+                    "GET", self._path, params=self._params, headers=self._headers
+                )
             else:
-                body = await self._client.get(href)
+                body = await self._client.request("GET", href, headers=self._headers)
             meta = body.get("meta") if isinstance(body, Mapping) else None
             if not isinstance(body, dict) or not isinstance(body.get("rows"), list):
                 msg = f"GET {self._path} did not answer with a collection of rows"

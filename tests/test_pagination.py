@@ -213,3 +213,23 @@ async def test_a_paginator_starts_over_when_iterated_again(
 
 def test_the_paginator_is_exported() -> None:
     assert Paginator.__name__ == "Paginator"
+
+
+async def test_extra_headers_go_with_every_page(ms: MoySklad, mock: respx.MockRouter) -> None:
+    # The beta header of the new assortment endpoint is not part of nextHref, so it has to be
+    # sent again with each page (dictionaries/_assortment.md § Ассортимент).
+    answers = iter(
+        [
+            page(orders(0, 1), offset=0, limit=1, size=2, next_href=f"{ORDERS}?offset=1&limit=1"),
+            page(orders(1, 1), offset=1, limit=1, size=2),
+        ]
+    )
+    route = mock.get("/entity/customerorder").mock(side_effect=lambda request: next(answers))
+    paginator = ms.iter_rows(
+        "/entity/customerorder", limit=1, headers={"X-Lognex-Remap-Beta-Feature": "tag"}
+    )
+    assert len([row async for row in paginator]) == 2
+    assert [call.request.headers["X-Lognex-Remap-Beta-Feature"] for call in route.calls] == [
+        "tag",
+        "tag",
+    ]
