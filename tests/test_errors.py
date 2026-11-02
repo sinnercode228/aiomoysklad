@@ -161,6 +161,7 @@ def test_a_detail_without_an_error_title_is_still_kept() -> None:
         (410, ApiVersionGoneError),
         (412, ValidationError),
         (413, PayloadTooLargeError),
+        (414, PayloadTooLargeError),
         (415, UnsupportedMediaTypeError),
         (429, RateLimitError),
         (500, ServerError),
@@ -169,7 +170,6 @@ def test_a_detail_without_an_error_title_is_still_kept() -> None:
         (504, ServerError),
         (507, ServerError),
         (405, MoySkladError),
-        (414, MoySkladError),
     ],
 )
 def test_each_documented_status_has_its_exception(status: int, kind: type[MoySkladError]) -> None:

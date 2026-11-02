@@ -211,6 +211,23 @@ async def test_headers_just_under_8_kb_are_sent(ms: MoySklad, mock: respx.MockRo
     assert mock.calls.call_count == 1
 
 
+async def test_a_body_over_20_mb_is_refused_before_sending(
+    ms: MoySklad, mock: respx.MockRouter
+) -> None:
+    # _restrictions.md § Лимиты и ограничения в JSON API: at most 20 MB of data in one request.
+    with pytest.raises(ValueError, match="20971520-byte limit"):
+        await ms.request("POST", "/entity/product", json={"description": "x" * (20 * 1024 * 1024)})
+    assert not mock.calls
+    assert ms.limiter.available() == 45
+
+
+async def test_a_body_of_20_mb_is_sent(ms: MoySklad, mock: respx.MockRouter) -> None:
+    mock.post("/entity/product").respond(200, json={})
+    padding = 20 * 1024 * 1024 - len('{"description": ""}')
+    await ms.request("POST", "/entity/product", json={"description": "x" * padding})
+    assert len(mock.calls.last.request.content) == 20 * 1024 * 1024
+
+
 @pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
 async def test_redirects_are_not_followed(
     ms: MoySklad, mock: respx.MockRouter, status: int

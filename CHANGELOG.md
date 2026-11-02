@@ -13,7 +13,7 @@ Tested against mocked HTTP only; not yet tested against a live MoySklad account.
 - `MoySklad`, an async client for the JSON API 1.2 of one user or solution, on httpx. It
   sends exactly `Accept-Encoding: gzip` on every request, never follows redirects, sends
   credentials only to URLs under its API root, encodes spaces as `%20` and refuses a request
-  whose line and headers exceed 8 KB.
+  whose line and headers exceed 8 KB or whose body exceeds 20 MB.
 - `BasicAuth` and `BearerToken` with an `AuthKind` (user, solution, draft solution), and
   `issue_user_token` for `POST /security/token`.
 - Request weights from the dated schedule of the docs (`request_weight`), overridable per

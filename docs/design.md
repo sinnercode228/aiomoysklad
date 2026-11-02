@@ -130,7 +130,8 @@ docs say: issuing a token revokes the user's earlier tokens.
   error 1058 is "could not decode the URL parameters" (`_errors.md`);
 - the request line and headers are checked against the 8 KB header limit before sending
   (`_restrictions.md § Лимиты и ограничения в JSON API`), raising `ValueError` instead of
-  wasting a request on 414.
+  wasting a request on 414; a JSON body is checked against the 20 MB limit of the same
+  section, taken as 20 × 1024 × 1024 bytes like the 8 KB as 8 × 1024.
 
 Optional request headers exposed as arguments: `X-Lognex-WebHook-DisableByPrefix`, one header
 per prefix, each prefix with scheme and full host (`dictionaries/_webhook.md § Заголовок
@@ -265,7 +266,7 @@ the table in `_general.md § Обработка ошибок`:
 | 404 | `NotFoundError` |
 | 409 | `ConflictError` |
 | 410 | `ApiVersionGoneError` |
-| 413 | `PayloadTooLargeError` |
+| 413, 414 (URL too long) | `PayloadTooLargeError` |
 | 415 | `UnsupportedMediaTypeError` (no body) |
 | 429 | `RateLimitError` (`retry_after`, `parallel` when code 1073) |
 | 500, 502, 503, 504 | `ServerError` |

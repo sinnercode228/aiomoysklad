@@ -121,7 +121,10 @@ class ApiVersionGoneError(MoySkladError):
 
 
 class PayloadTooLargeError(MoySkladError):
-    """HTTP 413: the request or one of its arrays is too large (for example over 1000 rows)."""
+    """HTTP 413: the request or one of its arrays is too large (for example over 1000 rows).
+
+    Also HTTP 414: the URL is too long (``_general.md § Обработка ошибок``).
+    """
 
 
 class UnsupportedMediaTypeError(MoySkladError):
@@ -184,6 +187,7 @@ _BY_STATUS: dict[int, type[MoySkladError]] = {
     410: ApiVersionGoneError,
     412: ValidationError,
     413: PayloadTooLargeError,
+    414: PayloadTooLargeError,
     415: UnsupportedMediaTypeError,
     429: RateLimitError,
 }

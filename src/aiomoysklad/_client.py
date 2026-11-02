@@ -29,7 +29,14 @@ from ._version import __version__
 from ._webhooks import Webhooks, WebhookStocks
 from ._weights import request_weight
 
-__all__ = ["API_URL", "MAX_HEADER_BYTES", "MoySklad", "encode_query", "issue_user_token"]
+__all__ = [
+    "API_URL",
+    "MAX_BODY_BYTES",
+    "MAX_HEADER_BYTES",
+    "MoySklad",
+    "encode_query",
+    "issue_user_token",
+]
 
 logger = logging.getLogger("aiomoysklad")
 
@@ -39,6 +46,8 @@ API_URL = "https://api.moysklad.ru/api/remap/1.2"
 # _restrictions.md § Лимиты и ограничения в JSON API: no more than 8 KB in the request headers
 # (URL, User-Agent, Authorization and so on).
 MAX_HEADER_BYTES = 8 * 1024
+# Same section: no more than 20 MB of data in one request sent to the server.
+MAX_BODY_BYTES = 20 * 1024 * 1024
 
 # _general.md § Сжатие содержимого ответов: only gzip is supported; a request without this
 # header, or with another encoding, is answered 415 with no body. httpx sends
@@ -343,7 +352,8 @@ class MoySklad:
 
         Raises:
             ValueError: The URL is outside the API root, the request line and headers exceed
-                8 KB, or ``headers`` tries to set ``Accept-Encoding`` or ``Authorization``.
+                8 KB, the body exceeds 20 MB, or ``headers`` tries to set ``Accept-Encoding``
+                or ``Authorization``.
             GuardTrippedError: Sending could get API access cut off; nothing was sent.
             MoySkladError: The client is closed, or a subclass matching the failure; see
                 :mod:`aiomoysklad`.
@@ -360,6 +370,12 @@ class MoySklad:
             msg = f"weight must be between 1 and {self.limiter.capacity}, got {weight}"
             raise ValueError(msg)
         content = None if json is None else jsonlib.dumps(json, ensure_ascii=False).encode()
+        if content is not None and len(content) > MAX_BODY_BYTES:
+            msg = (
+                f"{method} {target.path}: the body takes {len(content)} bytes, over the "
+                f"{MAX_BODY_BYTES}-byte limit; send fewer objects per request"
+            )
+            raise ValueError(msg)
         request = self._build(method, target, content, headers)
         response = await self._send(
             request, path, weight, may_resend=self.retry.may_resend(method, json)
