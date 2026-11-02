@@ -16,6 +16,7 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from types import TracebackType
 
+from ._retry import RateHeaders
 from ._weights import CAPACITY, WINDOW
 
 __all__ = ["ACCOUNT_PARALLEL_LIMIT", "PARALLEL_LIMIT", "ConcurrencyLimit", "RateLimiter"]
@@ -24,6 +25,11 @@ __all__ = ["ACCOUNT_PARALLEL_LIMIT", "PARALLEL_LIMIT", "ConcurrencyLimit", "Rate
 # one user or solution, and no more than 20 from an account.
 PARALLEL_LIMIT = 5
 ACCOUNT_PARALLEL_LIMIT = 20
+
+# An X-Lognex-Retry-TimeInterval outside this range, in seconds, is taken as a misreading
+# rather than a new period length.
+_MIN_INTERVAL = 1.0
+_MAX_INTERVAL = 60.0
 
 
 class RateLimiter:
@@ -95,6 +101,37 @@ class RateLimiter:
             msg = "pause must be a non-negative number of seconds"
             raise ValueError(msg)
         self._paused_until = max(self._paused_until, self._clock() + seconds)
+
+    def observe(self, rate: RateHeaders) -> None:
+        """Adjust to the rate limit headers of an answer.
+
+        ``_general.md § Обработка ошибок`` does not say whether ``X-RateLimit-Limit`` and
+        ``X-RateLimit-Remaining`` count requests or units for a user token, so only their ratio
+        is used, which is the same in either unit: the free units drop to
+        ``capacity * remaining / limit`` when that is lower than the limiter's own count. They
+        are never raised, because answers can arrive out of order. Units taken this way come
+        back one window later, like spent ones.
+
+        When nothing remains, callers are held for ``X-Lognex-Reset`` (or, without it,
+        ``X-Lognex-Retry-After``). An ``X-Lognex-Retry-TimeInterval`` between 1 and 60 seconds
+        becomes the window.
+        """
+        now = self._clock()
+        if rate.interval is not None and _MIN_INTERVAL <= rate.interval <= _MAX_INTERVAL:
+            self._window = rate.interval
+        if rate.limit is None or rate.remaining is None or rate.limit <= 0:
+            return
+        self._expire(now)
+        share = min(rate.remaining, rate.limit) / rate.limit
+        allowed = math.floor(self._capacity * share)
+        free = self._capacity - self._used
+        if allowed < free:
+            self._spend(now, free - allowed)
+        if rate.remaining == 0:
+            for seconds in (rate.reset, rate.retry_after):
+                if seconds is not None and seconds > 0:
+                    self._paused_until = max(self._paused_until, now + seconds)
+                    break
 
     async def acquire(self, weight: int = 1) -> None:
         """Wait until ``weight`` units are free, then spend them.

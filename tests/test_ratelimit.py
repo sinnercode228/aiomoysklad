@@ -6,6 +6,7 @@ import random
 import pytest
 
 from aiomoysklad import RateLimiter
+from aiomoysklad._retry import RateHeaders
 
 from .clock import FakeClock
 
@@ -199,3 +200,96 @@ def test_the_basket_is_validated(capacity: int, window: float) -> None:
 def test_a_negative_pause_is_refused() -> None:
     with pytest.raises(ValueError, match="pause"):
         RateLimiter().pause(-1.0)
+
+
+# Header-driven tuning. _general.md § Обработка ошибок documents the headers; it does not say
+# whether Limit and Remaining count requests or units, so only their ratio is used.
+
+
+def test_the_remaining_share_of_the_limit_lowers_the_free_units() -> None:
+    clock = FakeClock()
+    limiter = limiter_with(clock)
+    # A user token: 15 requests per 3 s, 5 left, so a third of the basket is free.
+    limiter.observe(RateHeaders(limit=15, remaining=5))
+    assert limiter.available() == 15
+    # The same share counted in units gives the same answer.
+    limiter.observe(RateHeaders(limit=45, remaining=15))
+    assert limiter.available() == 15
+
+
+async def test_the_headers_never_raise_the_estimate() -> None:
+    # Answers can arrive out of order under concurrency; an old one must not hand out units
+    # the limiter knows are spent.
+    clock = FakeClock()
+    limiter = limiter_with(clock)
+    for _ in range(8):
+        await limiter.acquire(5)
+    assert limiter.available() == 5
+    limiter.observe(RateHeaders(limit=45, remaining=45))
+    assert limiter.available() == 5
+
+
+def test_units_taken_from_the_headers_come_back_after_a_window() -> None:
+    clock = FakeClock()
+    limiter = limiter_with(clock)
+    limiter.observe(RateHeaders(limit=45, remaining=0))
+    assert limiter.available() == 0
+    clock.now = 3.0
+    assert limiter.available() == 45
+
+
+async def test_nothing_remaining_holds_callers_for_the_reset() -> None:
+    clock = FakeClock()
+    limiter = limiter_with(clock)
+    limiter.observe(RateHeaders(limit=45, remaining=0, reset=1.2))
+    await limiter.acquire(1)
+    assert clock.now == pytest.approx(3.0)  # the basket is empty for a window anyway
+    assert clock.sleeps[0] == pytest.approx(1.2)
+
+
+async def test_nothing_remaining_without_a_reset_uses_retry_after() -> None:
+    clock = FakeClock()
+    limiter = limiter_with(clock, capacity=45, window=0.5)
+    limiter.observe(RateHeaders(limit=45, remaining=0, retry_after=2.0))
+    await limiter.acquire(1)
+    assert clock.now == pytest.approx(2.0)
+
+
+async def test_a_reset_with_units_remaining_does_not_pause() -> None:
+    clock = FakeClock()
+    limiter = limiter_with(clock)
+    limiter.observe(RateHeaders(limit=45, remaining=30, reset=2.0))
+    await limiter.acquire(1)
+    assert clock.now == 0.0
+
+
+@pytest.mark.parametrize(("interval", "window"), [(5.0, 5.0), (1.0, 1.0), (60.0, 60.0)])
+def test_a_plausible_interval_replaces_the_window(interval: float, window: float) -> None:
+    limiter = RateLimiter()
+    limiter.observe(RateHeaders(interval=interval))
+    assert limiter.window == window
+
+
+@pytest.mark.parametrize("interval", [0.0, 0.5, 61.0, 3600.0])
+def test_an_implausible_interval_is_ignored(interval: float) -> None:
+    limiter = RateLimiter()
+    limiter.observe(RateHeaders(interval=interval))
+    assert limiter.window == 3.0
+
+
+@pytest.mark.parametrize(
+    "rate",
+    [
+        RateHeaders(),
+        RateHeaders(limit=45),
+        RateHeaders(remaining=0),
+        RateHeaders(limit=0, remaining=0),
+        RateHeaders(limit=45, remaining=90),
+    ],
+)
+def test_incomplete_or_odd_headers_change_nothing(rate: RateHeaders) -> None:
+    clock = FakeClock()
+    limiter = limiter_with(clock)
+    limiter.observe(rate)
+    assert limiter.available() == 45
+    assert limiter.window == 3.0
