@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build:
-    name: Test and build
+    name: Lint, test and build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,6 +31,10 @@ jobs:
             exit 1
           fi
       - run: python -m pip install -e ".[dev]"
+      - run: ruff check
+      - run: ruff format --check
+      - run: mypy --strict src
+      - run: mypy
       - run: python -m pytest -q
       - run: python -m build
       - run: python -m twine check --strict dist/*
