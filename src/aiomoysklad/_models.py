@@ -7,9 +7,11 @@ field may be added without breaking the response structure" (``_general.md § З
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
-__all__ = ["ApiErrorDetail", "Meta", "MoySkladModel", "State"]
+__all__ = ["ApiErrorDetail", "Meta", "MoySkladModel", "State", "Webhook", "WebhookStock"]
 
 
 class MoySkladModel(BaseModel):
@@ -86,3 +88,57 @@ class State(MoySkladModel):
     state_type: str | None = Field(default=None, alias="stateType")
     color: int | None = None
     entity_type: str | None = Field(default=None, alias="entityType")
+
+
+class Webhook(MoySkladModel):
+    """A webhook on entity changes (``dictionaries/_webhook.md § Атрибуты сущности``).
+
+    Attributes:
+        meta: Meta of the webhook.
+        id: The webhook's id.
+        account_id: The account's id.
+        entity_type: The entity type it watches, such as ``customerorder``.
+        action: ``CREATE``, ``UPDATE``, ``DELETE`` or ``PROCESSED`` (async tasks only).
+        url: Where MoySklad posts the notifications; up to 255 characters.
+        enabled: Whether it is on. MoySklad turns it off after its receiver failed for more
+            than seven of the last ten days.
+        method: The HTTP method of the notifications, ``POST``.
+        diff_type: ``NONE`` or ``FIELDS``, for ``UPDATE`` only; with ``FIELDS`` each event
+            lists the changed fields.
+        author_application: Meta of the solution that created it, if one did.
+    """
+
+    meta: Meta
+    id: str
+    account_id: str | None = Field(default=None, alias="accountId")
+    entity_type: str = Field(alias="entityType")
+    action: str
+    url: str
+    enabled: bool
+    method: str | None = None
+    diff_type: str | None = Field(default=None, alias="diffType")
+    author_application: dict[str, Any] | None = Field(default=None, alias="authorApplication")
+
+
+class WebhookStock(MoySkladModel):
+    """A webhook on stock changes (``dictionaries/_webhookstock.md § Атрибуты сущности``).
+
+    Attributes:
+        meta: Meta of the webhook.
+        id: The webhook's id.
+        account_id: The account's id.
+        stock_type: The stock it watches; only ``stock`` exists.
+        report_type: The report it points to: ``all`` or ``bystore``.
+        url: Where MoySklad posts the notifications; up to 255 characters.
+        enabled: Whether it is on.
+        author_application: Meta of the solution that created it, if one did.
+    """
+
+    meta: Meta
+    id: str
+    account_id: str | None = Field(default=None, alias="accountId")
+    stock_type: str = Field(alias="stockType")
+    report_type: str = Field(alias="reportType")
+    url: str
+    enabled: bool
+    author_application: dict[str, Any] | None = Field(default=None, alias="authorApplication")

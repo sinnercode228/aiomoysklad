@@ -21,7 +21,7 @@ from ._errors import (
 )
 from ._filters import Filter
 from ._guard import ErrorGuard
-from ._models import ApiErrorDetail, Meta, State
+from ._models import ApiErrorDetail, Meta, State, Webhook, WebhookStock
 from ._orders import CustomerOrders, OrderCursor, OrderStream
 from ._pagination import Paginator
 from ._ratelimit import ConcurrencyLimit, RateLimiter
@@ -35,6 +35,7 @@ from ._stock import (
     join_stock,
 )
 from ._version import __version__
+from ._webhooks import WebhookHealth, Webhooks, WebhookStocks
 from ._weights import request_weight
 
 __all__ = [
@@ -75,6 +76,11 @@ __all__ = [
     "StoreStockRow",
     "UnsupportedMediaTypeError",
     "ValidationError",
+    "Webhook",
+    "WebhookHealth",
+    "WebhookStock",
+    "WebhookStocks",
+    "Webhooks",
     "__version__",
     "issue_user_token",
     "join_stock",

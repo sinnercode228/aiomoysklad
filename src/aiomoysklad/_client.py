@@ -26,6 +26,7 @@ from ._retry import RateHeaders, RetryPolicy
 from ._stock import StockReports
 from ._time import moscow_today
 from ._version import __version__
+from ._webhooks import Webhooks, WebhookStocks
 from ._weights import request_weight
 
 __all__ = ["API_URL", "MAX_HEADER_BYTES", "MoySklad", "encode_query", "issue_user_token"]
@@ -150,6 +151,9 @@ class MoySklad:
         stock: The short stock reports, :class:`~aiomoysklad.StockReports`.
         assortment: The assortment without stock, :class:`~aiomoysklad.Assortment`.
         customer_orders: Customer orders, :class:`~aiomoysklad.CustomerOrders`.
+        webhooks: Webhooks on entity changes and the health check,
+            :class:`~aiomoysklad.Webhooks`.
+        webhook_stocks: Webhooks on stock changes, :class:`~aiomoysklad.WebhookStocks`.
     """
 
     def __init__(
@@ -191,6 +195,8 @@ class MoySklad:
         self.stock = StockReports(self)
         self.assortment = Assortment(self)
         self.customer_orders = CustomerOrders(self)
+        self.webhooks = Webhooks(self)
+        self.webhook_stocks = WebhookStocks(self)
 
     def __repr__(self) -> str:
         return f"MoySklad(base_url={self.base_url!r}, kind={self.auth.kind.name})"
