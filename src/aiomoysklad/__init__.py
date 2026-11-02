@@ -17,6 +17,7 @@ from ._errors import (
     UnsupportedMediaTypeError,
     ValidationError,
 )
+from ._guard import ErrorGuard
 from ._models import ApiErrorDetail, Meta
 from ._ratelimit import ConcurrencyLimit, RateLimiter
 from ._retry import RetryPolicy
@@ -32,6 +33,7 @@ __all__ = [
     "BearerToken",
     "ConcurrencyLimit",
     "ConflictError",
+    "ErrorGuard",
     "ForbiddenError",
     "GuardTrippedError",
     "Meta",
