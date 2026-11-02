@@ -64,9 +64,8 @@ async def sync(
 ) -> int:
     """Handle the orders changed since the saved cursor; return how many came."""
     cursor = load_cursor(cursor_path, now or datetime.now(MSK))
-    target = None
-    if paid_state:
-        target = next(s for s in await ms.customer_orders.states() if s.name == paid_state)
+    # A name that matches no state raises LookupError naming it, before any order is read.
+    target = await ms.customer_orders.find_state(paid_state) if paid_state else None
     orders = ms.customer_orders.iter_updated_since(cursor, filter="applicable=true")
     count = 0
     async for order in orders:

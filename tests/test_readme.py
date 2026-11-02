@@ -14,6 +14,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 import respx
 
@@ -102,30 +103,47 @@ async def test_stock(
 
 @pytest.mark.parametrize("readme", READMES)
 async def test_orders(readme: str, ms: MoySklad, mock: respx.MockRouter) -> None:
-    state = f"{API}/entity/customerorder/metadata/states/s1"
-    mock.get("/entity/customerorder").respond(
-        200,
-        json=collection(
-            [{"id": "o1", "updated": "2026-11-02 10:00:00.000", "sum": 5, "payedSum": 5}]
-        ),
-    )
+    new = {"meta": {"href": f"{API}/entity/customerorder/metadata/states/s0"}}
+    paid = {"meta": {"href": f"{API}/entity/customerorder/metadata/states/s1"}}
+    stored = {"id": "o1", "updated": "2026-11-02 10:00:00.000", "sum": 5, "payedSum": 5}
+    stored["state"] = new
+
+    def listed(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=collection([dict(stored)]))
+
+    def moved(request: httpx.Request) -> httpx.Response:
+        # A PUT changes the order's updated, so the next run reads it again.
+        stored["state"] = json.loads(request.content)["state"]
+        stored["updated"] = "2026-11-02 10:05:00.000"
+        return httpx.Response(200, json=dict(stored))
+
+    mock.get("/entity/customerorder").mock(side_effect=listed)
     mock.get("/entity/customerorder/metadata").respond(
-        200, json={"states": [{"meta": {"href": state}, "id": "s1", "name": "Оплачен"}]}
+        200,
+        json={
+            "states": [
+                {**new, "id": "s0", "name": "Новый"},
+                {**paid, "id": "s1", "name": "Оплачен"},
+            ]
+        },
     )
-    put = mock.put("/entity/customerorder/o1").respond(200, json={"id": "o1"})
+    put = mock.put("/entity/customerorder/o1").mock(side_effect=moved)
     post = mock.post("/entity/customerorder").respond(200, json={"id": "o2"})
     meta = {"meta": {"href": f"{API}/entity/organization/x"}}
-    namespace = await run(
-        sample(readme, "orders"),
-        ms=ms,
-        saved={"updated": "2026-11-01 00:00:00", "seen": []},
-        org=meta,
-        agent=meta,
+    namespace = await run(sample(readme, "orders"), ms=ms, saved=None, org=meta, agent=meta)
+    assert (
+        json.loads(put.calls.last.request.content)["state"]["meta"]["href"] == paid["meta"]["href"]
     )
-    assert json.loads(put.calls.last.request.content)["state"]["meta"]["href"] == state
     assert namespace["saved"] == {"updated": "2026-11-02 10:00:00", "seen": ["o1"]}
     assert "syncId" in json.loads(post.calls.last.request.content)
     assert namespace["order"] == {"id": "o2"}
+
+    # The next run reads the order once more, already in the state, and leaves it alone.
+    again = await run(
+        sample(readme, "orders"), ms=ms, saved=namespace["saved"], org=meta, agent=meta
+    )
+    assert put.call_count == 1
+    assert again["saved"] == {"updated": "2026-11-02 10:05:00", "seen": ["o1"]}
 
 
 @pytest.mark.parametrize("readme", READMES)

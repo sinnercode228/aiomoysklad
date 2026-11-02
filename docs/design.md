@@ -497,8 +497,11 @@ await ms.customer_orders.set_state(order_id, "Отгружен")  # name or stat
 States are cached per client and reloaded once when a name is not found. Each call counts
 toward the PUT-per-entity counter (section 2.6). `states(*, reload=False) -> list[State]`
 exposes them; `State` is a model of `dictionaries/_states.md § Атрибуты сущности`.
-`set_state` also takes a `State`. A name that no state has, or that two states share, raises
-`LookupError`. Ids are checked against `[0-9A-Za-z-]{1,64}` before they go into a path.
+`set_state` also takes a `State`; `find_state(name_or_id) -> State` resolves one the same way.
+A name that no state has, or that two states share, raises `LookupError`. `set_state` does
+not check the order's current state; a caller that runs on a schedule compares
+`order["state"]["meta"]["href"]` first, because the PUT changes `updated` and the order comes
+again on the next read. Ids are checked against `[0-9A-Za-z-]{1,64}` before they go into a path.
 
 ## 7. Webhooks
 

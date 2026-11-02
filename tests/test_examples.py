@@ -176,6 +176,18 @@ async def test_sync_orders_moves_paid_orders_and_saves_the_cursor(
     )
 
 
+async def test_sync_orders_names_a_state_that_does_not_exist(
+    ms: MoySklad, mock: respx.MockRouter, tmp_path: Path
+) -> None:
+    mock.get("/entity/customerorder/metadata").respond(
+        200, json={"states": [{**state_meta(NEW), "id": NEW, "name": "Новый"}]}
+    )
+    orders = mock.get("/entity/customerorder").respond(200, json=collection([]))
+    with pytest.raises(LookupError, match="'Оплачн'"):
+        await load("sync_orders").sync(ms, tmp_path / "c.json", paid_state="Оплачн", now=NOW)
+    assert not orders.called
+
+
 async def test_sync_orders_main_reads_the_environment(
     monkeypatch: pytest.MonkeyPatch, mock: respx.MockRouter, tmp_path: Path
 ) -> None:

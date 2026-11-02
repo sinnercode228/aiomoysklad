@@ -45,17 +45,16 @@ from aiomoysklad import AuthKind, BearerToken, MoySklad
 
 
 async def main(token: str) -> None:
-    # Say whose token it is: the weight of each request depends on it.
     async with MoySklad(BearerToken(token, kind=AuthKind.SOLUTION)) as ms:
         async for product in ms.iter_rows("/entity/product", limit=100):
             print(product["name"])
 ```
 
-`BearerToken` defaults to `AuthKind.USER`. Pass the kind that matches the token: until
+The token's kind sets each request's weight; `BearerToken` defaults to `AuthKind.USER`. Until
 2026-12-01 a draft or in-moderation solution costs more than a user (4 units against 3), so
-leaving such a token on the default undercounts and runs into 429s.
-`BasicAuth(login, password)` is the other option. Several
-clients with the same credentials can share one `RateLimiter` and `ConcurrencyLimit`.
+such a token left on the default is undercounted and runs into 429s. `BasicAuth(login,
+password)` is the other option. Clients with the same credentials can share one `RateLimiter`
+and `ConcurrencyLimit`.
 
 `Filter` builds `filter=` strings with the nine documented operators and escapes `;`:
 
@@ -83,7 +82,7 @@ for row, quantity in join_stock(rows, stock, default=0.0):
 ```
 
 `ms.stock.bystore_current()` groups by store as well. Rows are typed (`StockRow`,
-`StoreStockRow`) and hold only what the report returns. `StockPoller` polls with
+`StoreStockRow`). `StockPoller` polls with
 `changedSince` and an overlap, and reads a full report at least daily, as the docs advise.
 Long id lists are split to stay under the 8 KB header limit.
 
@@ -91,12 +90,19 @@ Long id lists are split to stay under the 8 KB header limit.
 
 <!-- sample: orders -->
 ```python
+from datetime import datetime
+
 from aiomoysklad import OrderCursor
 
-orders = ms.customer_orders.iter_updated_since(OrderCursor.from_dict(saved))
+paid = await ms.customer_orders.find_state("Оплачен")
+# First run: a naive time is Moscow time.
+cursor = OrderCursor.from_dict(saved) if saved else OrderCursor(datetime(2026, 11, 1))
+orders = ms.customer_orders.iter_updated_since(cursor)
 async for order in orders:
-    if order["payedSum"] >= order["sum"] > 0:
-        await ms.customer_orders.set_state(order["id"], "Оплачен")
+    state = order.get("state", {}).get("meta", {}).get("href")
+    # A PUT changes updated: next run the order comes again, already moved.
+    if order["payedSum"] >= order["sum"] > 0 and state != paid.meta.href:
+        await ms.customer_orders.set_state(order["id"], paid)
 saved = orders.cursor.as_dict()  # store it for the next run
 
 order = await ms.customer_orders.create({"organization": org, "agent": agent})
@@ -104,7 +110,7 @@ order = await ms.customer_orders.create({"organization": org, "agent": agent})
 
 The iterator pages by `updated` and id instead of offset, so orders changed during the walk
 are not skipped. `create` adds a `syncId`, so a retried request returns the order created the
-first time. `set_state` takes a state's name or id.
+first time.
 
 ## Webhooks
 
@@ -140,12 +146,8 @@ and so on), all under `MoySkladError`, with the parsed `errors` array and codes.
 
 ## Examples
 
-- [examples/stock_sync.py](examples/stock_sync.py): a full stock report, then changes every 10
-  minutes.
-- [examples/sync_orders.py](examples/sync_orders.py): orders changed since the last run, paid
-  ones moved to a state.
-- [examples/webhooks.py](examples/webhooks.py): webhook setup, a plain ASGI receiver and a
-  health check.
+[stock_sync.py](examples/stock_sync.py) (stock), [sync_orders.py](examples/sync_orders.py)
+(orders) and [webhooks.py](examples/webhooks.py) (setup, an ASGI receiver, a health check).
 
 ## Not covered
 

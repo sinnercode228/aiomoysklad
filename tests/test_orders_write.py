@@ -209,6 +209,19 @@ async def test_an_unknown_state_reloads_the_states_once(
     assert put.call_count == 1
 
 
+async def test_find_state_returns_a_state_by_name_or_id(
+    ms: MoySklad, mock: respx.MockRouter
+) -> None:
+    mock.get(f"{ORDERS}/metadata").respond(
+        200, json=metadata(state(NEW, "Новый"), state(SHIPPED, "Отгружен"))
+    )
+    shipped = await ms.customer_orders.find_state("Отгружен")
+    assert shipped.id == SHIPPED
+    assert (await ms.customer_orders.find_state(uuid.UUID(NEW))).name == "Новый"
+    with pytest.raises(LookupError, match="no customer order state named or with id 'Оплачен'"):
+        await ms.customer_orders.find_state("Оплачен")
+
+
 async def test_two_states_with_one_name_are_ambiguous(ms: MoySklad, mock: respx.MockRouter) -> None:
     mock.get(f"{ORDERS}/metadata").respond(
         200, json=metadata(state(NEW, "Новый"), state(SHIPPED, "Новый"))

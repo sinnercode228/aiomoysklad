@@ -331,6 +331,16 @@ class CustomerOrders:
             raise LookupError(msg)
         return by_name[0] if by_name else None
 
+    async def find_state(self, state: str | uuid.UUID) -> State:
+        """Return the order state with this name or id.
+
+        The states are cached as in :meth:`states`; a name not found there reloads them once.
+
+        Raises:
+            LookupError: No state, or more than one, has that name.
+        """
+        return await self._resolve(state)
+
     async def _resolve(self, state: str | uuid.UUID | State) -> State:
         if isinstance(state, State):
             return state

@@ -47,16 +47,16 @@ from aiomoysklad import AuthKind, BearerToken, MoySklad
 
 
 async def main(token: str) -> None:
-    # Укажите, чей это токен: от этого зависит вес каждого запроса.
     async with MoySklad(BearerToken(token, kind=AuthKind.SOLUTION)) as ms:
         async for product in ms.iter_rows("/entity/product", limit=100):
             print(product["name"])
 ```
 
-По умолчанию `BearerToken` считается токеном пользователя (`AuthKind.USER`). Указывайте вид,
-который соответствует токену: до 2026-12-01 запрос решения в статусе черновика или на
-модерации стоит дороже запроса пользователя (4 единицы против 3), и с видом по умолчанию
-клиент будет недосчитывать вес и получать 429. Второй вариант — `BasicAuth(login, password)`. Несколько клиентов с одними учётными данными могут делить один
+От вида токена зависит вес каждого запроса. По умолчанию `BearerToken` считается токеном
+пользователя (`AuthKind.USER`). До 2026-12-01 запрос решения в статусе черновика или на
+модерации стоит дороже запроса пользователя (4 единицы против 3), поэтому с видом по умолчанию
+клиент недосчитает вес такого токена и будет получать 429. Второй вариант —
+`BasicAuth(login, password)`. Несколько клиентов с одними учётными данными могут делить один
 `RateLimiter` и один `ConcurrencyLimit`.
 
 `Filter` собирает строку `filter=` из девяти документированных операторов и экранирует `;`:
@@ -85,7 +85,7 @@ for row, quantity in join_stock(rows, stock, default=0.0):
 ```
 
 `ms.stock.bystore_current()` даёт ещё и разбивку по складам. Строки типизированы (`StockRow`,
-`StoreStockRow`) и содержат только то, что возвращает отчёт. `StockPoller` опрашивает отчёт с
+`StoreStockRow`). `StockPoller` опрашивает отчёт с
 `changedSince` и перекрытием интервалов и не реже раза в сутки читает полный отчёт, как
 советует документация. Длинные списки id делятся на части, чтобы уложиться в 8 КБ заголовков.
 
@@ -93,12 +93,19 @@ for row, quantity in join_stock(rows, stock, default=0.0):
 
 <!-- sample: orders -->
 ```python
+from datetime import datetime
+
 from aiomoysklad import OrderCursor
 
-orders = ms.customer_orders.iter_updated_since(OrderCursor.from_dict(saved))
+paid = await ms.customer_orders.find_state("Оплачен")
+# Первый запуск: время без часового пояса считается московским.
+cursor = OrderCursor.from_dict(saved) if saved else OrderCursor(datetime(2026, 11, 1))
+orders = ms.customer_orders.iter_updated_since(cursor)
 async for order in orders:
-    if order["payedSum"] >= order["sum"] > 0:
-        await ms.customer_orders.set_state(order["id"], "Оплачен")
+    state = order.get("state", {}).get("meta", {}).get("href")
+    # PUT меняет updated: в следующий раз заказ придёт снова, уже в этом статусе.
+    if order["payedSum"] >= order["sum"] > 0 and state != paid.meta.href:
+        await ms.customer_orders.set_state(order["id"], paid)
 saved = orders.cursor.as_dict()  # сохраните до следующего запуска
 
 order = await ms.customer_orders.create({"organization": org, "agent": agent})
@@ -106,7 +113,7 @@ order = await ms.customer_orders.create({"organization": org, "agent": agent})
 
 Итератор листает не по offset, а по `updated` и id, поэтому заказы, изменённые во время
 чтения, не теряются. `create` добавляет `syncId`, и повторный запрос вернёт заказ, созданный в
-первый раз. `set_state` принимает название статуса или его id.
+первый раз.
 
 ## Вебхуки
 
@@ -144,12 +151,8 @@ for received in await receiver.receive(body, request_id, fetch=True):
 
 ## Примеры
 
-- [examples/stock_sync.py](examples/stock_sync.py): полный отчёт об остатках, затем изменения
-  каждые 10 минут.
-- [examples/sync_orders.py](examples/sync_orders.py): заказы, изменённые с прошлого запуска;
-  оплаченные переводятся в нужный статус.
-- [examples/webhooks.py](examples/webhooks.py): настройка вебхуков, простой ASGI-приёмник и
-  проверка состояния.
+[stock_sync.py](examples/stock_sync.py) (остатки), [sync_orders.py](examples/sync_orders.py)
+(заказы) и [webhooks.py](examples/webhooks.py) (настройка, ASGI-приёмник, проверка состояния).
 
 ## Чего нет
 

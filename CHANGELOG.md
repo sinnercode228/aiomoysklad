@@ -39,7 +39,7 @@ Tested against mocked HTTP only; not yet tested against a live MoySklad account.
   expands it does not support, and warning when rows come back with stock fields.
 - `ms.customer_orders`: `iter_updated_since` pages by `updated` and id from a saved
   `OrderCursor`; `create` adds a `syncId`; `set_state` takes a state's name or id; `states`
-  reads them from the metadata.
+  reads them from the metadata and `find_state` picks one by name or id.
 - `ms.webhooks` and `ms.webhook_stocks`: list, get, create, update, enable, disable, delete,
   bulk delete and `ensure`, with the documented values checked before sending.
   `ms.webhooks.health()` reports, and can re-enable, the disabled webhooks under a URL prefix.
