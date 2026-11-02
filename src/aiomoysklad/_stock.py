@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal, get_args
@@ -38,10 +38,13 @@ if TYPE_CHECKING:
 __all__ = [
     "MAX_CHANGED_SINCE",
     "STOCK_TYPES",
+    "StockPoller",
     "StockReports",
     "StockRow",
     "StockType",
+    "StockUpdate",
     "StoreStockRow",
+    "join_stock",
     "parse_stock_rows",
 ]
 
@@ -357,3 +360,166 @@ class StockReports:
                 else:
                     plain.append(row)
         return stores if by_store else plain
+
+
+@dataclass(frozen=True)
+class StockUpdate:
+    """What one :meth:`StockPoller.poll` read.
+
+    Attributes:
+        rows: The rows of the report.
+        full: ``True`` for a full report, which lists every item with stock (zero rows
+            included); ``False`` for the items that changed since :attr:`since`, with their
+            current totals.
+        since: The ``changedSince`` sent, or ``None`` for a full report.
+        at: The moment the poll started; the next poll asks for changes since then, minus the
+            overlap.
+    """
+
+    rows: list[StockRow] | list[StoreStockRow]
+    full: bool
+    since: datetime | None
+    at: datetime
+
+
+class StockPoller:
+    """Keep stock in sync by polling the short report with ``changedSince``.
+
+    It follows the advice of ``reports/_report_stock.md § Параметр changedSince``: overlap the
+    intervals a little (the docs' example polls every 30 minutes for the past 35), run a full
+    report without ``changedSince`` once a day or more often, and never ask for more than 24
+    hours back, falling back to a full report instead. ::
+
+        poller = StockPoller(ms.stock, stock_type="quantity")
+        while True:
+            update = await poller.poll()
+            save(update.rows, replace_all=update.full)
+            await asyncio.sleep(600)
+
+    The poller does not sleep itself. Save :attr:`last_poll` and :attr:`last_full` and pass
+    them back after a restart to continue with changes.
+
+    Args:
+        stock: ``ms.stock`` of a client.
+        by_store: Poll ``/report/stock/bystore/current`` instead of ``/all/current``.
+        stock_type: The value to poll; see :meth:`StockReports.all_current`.
+        overlap: How far each poll reaches back before the previous one; 0 to under 24 hours.
+        full_every: How often to read a full report; at most 24 hours.
+        assortment_ids: Only these items.
+        store_ids: Only these stores.
+        last_poll: When the last poll started, from a saved state.
+        last_full: When the last full report started, from a saved state.
+    """
+
+    def __init__(
+        self,
+        stock: StockReports,
+        *,
+        by_store: bool = False,
+        stock_type: StockType = "stock",
+        overlap: timedelta = timedelta(minutes=5),
+        full_every: timedelta = MAX_CHANGED_SINCE,
+        assortment_ids: Iterable[str | uuid.UUID] = (),
+        store_ids: Iterable[str | uuid.UUID] = (),
+        last_poll: datetime | None = None,
+        last_full: datetime | None = None,
+    ) -> None:
+        if not timedelta(0) <= overlap < MAX_CHANGED_SINCE:
+            msg = f"overlap must be at least 0 and under 24 hours, got {overlap}"
+            raise ValueError(msg)
+        if not timedelta(0) < full_every <= MAX_CHANGED_SINCE:
+            msg = (
+                "full_every must be more than 0 and at most 24 hours: the docs advise a full "
+                f"report at least once a day, got {full_every}"
+            )
+            raise ValueError(msg)
+        self._stock = stock
+        self.by_store = by_store
+        self.stock_type: StockType = stock_type
+        self.overlap = overlap
+        self.full_every = full_every
+        self.assortment_ids = check_ids(assortment_ids, "assortment_ids")
+        self.store_ids = check_ids(store_ids, "store_ids")
+        self.last_poll = last_poll
+        self.last_full = last_full
+
+    def __repr__(self) -> str:
+        report = "bystore" if self.by_store else "all"
+        return f"StockPoller({report}, {self.stock_type}, last_poll={self.last_poll})"
+
+    def _since(self, at: datetime) -> datetime | None:
+        if self.last_poll is None or self.last_full is None:
+            return None
+        if at - self.last_full >= self.full_every:
+            return None
+        since = min(self.last_poll - self.overlap, at)
+        if at - since > MAX_CHANGED_SINCE:
+            return None
+        return since
+
+    async def poll(self) -> StockUpdate:
+        """Read the changes since the last poll, or a full report when one is due.
+
+        The state moves forward only when the report was read; after an error the next poll
+        asks again from the same moment.
+        """
+        at = self._stock.now()
+        since = self._since(at)
+        full = since is None
+        read = self._stock.bystore_current if self.by_store else self._stock.all_current
+        rows = await read(
+            self.stock_type,
+            # A full report needs the zero rows to show what ran out; with changedSince the
+            # zero rows are always included.
+            include_zero=full,
+            changed_since=since,
+            assortment_ids=self.assortment_ids,
+            store_ids=self.store_ids,
+        )
+        self.last_poll = at
+        if full:
+            self.last_full = at
+        return StockUpdate(rows=rows, full=full, since=since, at=at)
+
+
+def join_stock(
+    rows: Iterable[Mapping[str, Any]],
+    stock: Iterable[StockRow | StoreStockRow],
+    *,
+    default: float | None = None,
+) -> list[tuple[Mapping[str, Any], float | None]]:
+    """Pair assortment rows with their stock, matching ``id`` to ``assortmentId``.
+
+    The new assortment endpoint returns no stock fields; the docs join it with the short
+    report this way (``dictionaries/_assortment.md § Поля остатков``). Rows of a report by store
+    are summed per item; the sum is ``None`` when any of them is ``None`` (being recalculated).
+
+    Args:
+        rows: Assortment rows, or any entities with ``id``.
+        stock: Rows of one short report, all of one stock type.
+        default: The value for an item missing from the report. A report without zero rows
+            leaves out what is at zero, so pass ``0.0`` for such a full report; a report with
+            ``changed_since`` leaves out what did not change, so keep ``None`` there.
+
+    Raises:
+        ValueError: ``stock`` mixes stock types.
+    """
+    totals: dict[str, float | None] = {}
+    types: set[str] = set()
+    for row in stock:
+        types.add(row.stock_type)
+        key = row.assortment_id.lower()
+        if key not in totals:
+            totals[key] = row.value
+            continue
+        before = totals[key]
+        totals[key] = None if before is None or row.value is None else before + row.value
+    if len(types) > 1:
+        msg = f"join one stock type at a time, got {', '.join(sorted(types))}"
+        raise ValueError(msg)
+    joined: list[tuple[Mapping[str, Any], float | None]] = []
+    for entity in rows:
+        ident = entity.get("id")
+        found = totals.get(ident.lower(), default) if isinstance(ident, str) else default
+        joined.append((entity, found))
+    return joined

@@ -24,7 +24,14 @@ from ._models import ApiErrorDetail, Meta
 from ._pagination import Paginator
 from ._ratelimit import ConcurrencyLimit, RateLimiter
 from ._retry import RetryPolicy
-from ._stock import StockReports, StockRow, StoreStockRow
+from ._stock import (
+    StockPoller,
+    StockReports,
+    StockRow,
+    StockUpdate,
+    StoreStockRow,
+    join_stock,
+)
 from ._version import __version__
 from ._weights import request_weight
 
@@ -54,12 +61,15 @@ __all__ = [
     "RedirectError",
     "RetryPolicy",
     "ServerError",
+    "StockPoller",
     "StockReports",
     "StockRow",
+    "StockUpdate",
     "StoreStockRow",
     "UnsupportedMediaTypeError",
     "ValidationError",
     "__version__",
     "issue_user_token",
+    "join_stock",
     "request_weight",
 ]
