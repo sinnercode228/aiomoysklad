@@ -192,8 +192,10 @@ at debug level, so the real weight of an endpoint can be read off a live run.
 
 ### 2.5 Retry on 429
 
-- Wait `X-Lognex-Retry-After` ms; if absent, `X-Lognex-Reset` ms; if both are absent (error
-  1073 carries no rate headers), exponential backoff from 0.5 s with jitter, capped at 10 s.
+- Wait `X-Lognex-Retry-After` ms; if absent, `X-Lognex-Reset` ms; if both are absent,
+  exponential backoff from 0.5 s with jitter, capped at 10 s. The rate headers do not reflect
+  the parallel limit (`_general.md § Обработка ошибок`), so for error 1073 the client backs
+  off whatever the headers say, and does not pause the limiter.
 - At most 3 retries by default (`RetryPolicy(max_retries=3, max_wait=60.0)`). A wait longer
   than `max_wait` raises `RateLimitError` with `retry_after` set instead of sleeping.
 - GET, PUT and DELETE are retried. POST is retried only when every object in the body carries

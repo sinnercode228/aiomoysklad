@@ -106,13 +106,31 @@ async def test_a_429_with_nothing_remaining_empties_the_basket(
 async def test_too_many_parallel_requests_back_off_without_holding_the_limiter(
     ms: MoySklad, mock: respx.MockRouter, clock: FakeClock
 ) -> None:
-    # Error 1073 comes without rate headers (_general.md § Обработка ошибок).
+    # The rate headers do not reflect the parallel limit (_general.md § Обработка ошибок).
     route = mock.get(PRODUCT)
     route.side_effect = [httpx.Response(429, json=PARALLEL), OK]
     await ms.get(PRODUCT)
     assert route.call_count == 2
     [wait] = clock.sleeps
     assert 0.25 <= wait <= 0.5
+
+
+async def test_a_parallel_429_backs_off_whatever_its_rate_headers_say(
+    ms: MoySklad, mock: respx.MockRouter, clock: FakeClock
+) -> None:
+    # The headers describe the 3-second basket, not the requests in flight that error 1073 is
+    # about (_general.md § Обработка ошибок), so they are not trusted for it.
+    route = mock.get(PRODUCT)
+    route.side_effect = [
+        httpx.Response(
+            429, json=PARALLEL, headers={"X-Lognex-Retry-After": "20000", "X-Lognex-Reset": "20000"}
+        ),
+        OK,
+    ]
+    await ms.get(PRODUCT)
+    [wait] = clock.sleeps
+    assert 0.25 <= wait <= 0.5
+    assert ms.limiter.available() == 45 - 2
 
 
 async def test_a_parallel_429_that_is_not_retried_is_marked(

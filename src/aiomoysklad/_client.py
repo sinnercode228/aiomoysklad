@@ -461,16 +461,20 @@ class MoySklad:
             raise error_from_response(response, retry_after=wait)
 
     def _retry_delay(self, response: httpx.Response, rate: RateHeaders, retry: int) -> float:
+        if response.status_code != _TOO_MANY_REQUESTS:
+            return self.retry.delay(rate, retry, self._random)
+        try:
+            details = parse_errors(response.json())
+        except ValueError:
+            details = []
+        if any(detail.code == _PARALLEL_LIMIT_CODE for detail in details):
+            # Error 1073 is about requests in flight, which the cap handles. The rate headers
+            # do not reflect that limit (_general.md § Обработка ошибок), so back off instead
+            # of trusting them, and leave the limiter alone.
+            return self.retry.backoff(retry, self._random)
+        # A 429 for the 3-second basket holds every request of this limiter, not only this one.
         delay = self.retry.delay(rate, retry, self._random)
-        if response.status_code == _TOO_MANY_REQUESTS:
-            try:
-                details = parse_errors(response.json())
-            except ValueError:
-                details = []
-            if all(detail.code != _PARALLEL_LIMIT_CODE for detail in details):
-                # A 429 for the 3-second basket holds every request of this limiter, not only
-                # this one. Error 1073 is about requests in flight, which the cap handles.
-                self.limiter.pause(delay)
+        self.limiter.pause(delay)
         return delay
 
     def _note(self, response: httpx.Response, path: str, weight: int, rate: RateHeaders) -> None:

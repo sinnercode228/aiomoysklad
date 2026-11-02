@@ -71,7 +71,7 @@ def test_the_wait_falls_back_to_the_reset() -> None:
 
 
 def test_without_headers_the_wait_is_a_jittered_backoff() -> None:
-    # Error 1073, too many parallel requests, comes without rate headers.
+    # An answer without rate headers.
     policy = RetryPolicy()
     rng = random.Random(0)
     for retry, ceiling in [(1, 0.5), (2, 1.0), (3, 2.0), (4, 4.0), (6, 10.0), (50, 10.0)]:
