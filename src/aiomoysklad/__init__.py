@@ -1,6 +1,6 @@
 """Async toolkit for MoySklad JSON API 1.2 integrations."""
 
-from ._assortment import Assortment
+from ._assortment import Assortment, GroupBy
 from ._auth import AuthKind, BasicAuth, BearerToken
 from ._client import API_URL, MoySklad, issue_user_token
 from ._errors import (
@@ -50,16 +50,18 @@ from ._stock import (
     StockPoller,
     StockReports,
     StockRow,
+    StockType,
     StockUpdate,
     StoreStockRow,
     join_stock,
 )
 from ._version import __version__
-from ._webhooks import WebhookHealth, Webhooks, WebhookStocks
+from ._webhooks import Action, DiffType, ReportType, WebhookHealth, Webhooks, WebhookStocks
 from ._weights import request_weight
 
 __all__ = [
     "API_URL",
+    "Action",
     "ApiErrorDetail",
     "ApiVersionGoneError",
     "Assortment",
@@ -73,10 +75,12 @@ __all__ = [
     "CustomerOrders",
     "Dedupe",
     "Delivery",
+    "DiffType",
     "EntityNotification",
     "ErrorGuard",
     "Filter",
     "ForbiddenError",
+    "GroupBy",
     "GuardTrippedError",
     "MemoryDedupe",
     "Meta",
@@ -93,6 +97,7 @@ __all__ = [
     "ReceivedEvent",
     "ReceiverStats",
     "RedirectError",
+    "ReportType",
     "RetryPolicy",
     "ServerError",
     "State",
@@ -100,6 +105,7 @@ __all__ = [
     "StockPoller",
     "StockReports",
     "StockRow",
+    "StockType",
     "StockUpdate",
     "StoreStockRow",
     "UnsupportedMediaTypeError",
