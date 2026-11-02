@@ -577,14 +577,14 @@ exceptions of section 2.7, `__version__`.
 ```
 src/aiomoysklad/
   __init__.py      _version.py   py.typed
-  _auth.py         AuthKind, BasicAuth, BearerToken, issue_user_token
+  _auth.py         AuthKind, BasicAuth, BearerToken
   _weights.py      weight schedule and per-path weights (cites _restrictions.md)
   _ratelimit.py    RateLimiter, ConcurrencyLimit, header tuning
   _guard.py        ErrorGuard
   _retry.py        RetryPolicy, delay from X-Lognex-* headers
   _errors.py       exceptions, error body parsing
   _time.py         Moscow time formatting and parsing
-  _client.py       MoySklad, URL and header handling
+  _client.py       MoySklad, issue_user_token, URL and header handling
   _pagination.py   Paginator
   _filters.py      Filter
   _models.py       Meta, ApiErrorDetail, StockRow, StoreStockRow, Webhook, WebhookStock,

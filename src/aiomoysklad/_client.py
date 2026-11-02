@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 import httpx
 
-from ._auth import Auth
+from ._auth import Auth, BasicAuth
 from ._errors import MoySkladError, NetworkError, error_from_response, parse_errors
 from ._guard import ErrorGuard
 from ._ratelimit import ConcurrencyLimit, RateLimiter
@@ -23,7 +23,7 @@ from ._time import moscow_today
 from ._version import __version__
 from ._weights import request_weight
 
-__all__ = ["API_URL", "MAX_HEADER_BYTES", "MoySklad", "encode_query"]
+__all__ = ["API_URL", "MAX_HEADER_BYTES", "MoySklad", "encode_query", "issue_user_token"]
 
 logger = logging.getLogger("aiomoysklad")
 
@@ -438,3 +438,43 @@ class MoySklad:
                 method=method,
                 url=str(response.request.url.copy_with(query=None)),
             ) from None
+
+
+async def issue_user_token(
+    login: str,
+    password: str,
+    *,
+    base_url: str = API_URL,
+    http: httpx.AsyncClient | None = None,
+    timeout: float = 30.0,
+) -> str:
+    """Get a new access token for a user with ``POST /security/token``.
+
+    Issuing a token revokes the tokens the user had before (``_general.md § Получение нового
+    токена``), so every other integration running with this user's old token stops working.
+    The request is not resent after a 429 or a timeout for the same reason.
+
+    Args:
+        login: The user's login, such as ``admin@example``.
+        password: The user's password.
+        base_url: The API root.
+        http: An ``httpx.AsyncClient`` to use; it is left open.
+        timeout: Timeout in seconds when no ``http`` is given.
+
+    Returns:
+        The ``access_token``, for :class:`~aiomoysklad.BearerToken` with the default
+        :attr:`~aiomoysklad.AuthKind.USER` kind.
+
+    Raises:
+        AuthError: The login or password was refused.
+        MoySkladError: Any other failure, or an answer without ``access_token``.
+    """
+    async with MoySklad(
+        BasicAuth(login, password), base_url=base_url, http=http, timeout=timeout
+    ) as ms:
+        body = await ms.request("POST", "/security/token")
+    token = body.get("access_token") if isinstance(body, Mapping) else None
+    if not isinstance(token, str) or not token:
+        msg = "POST /security/token answered without an access_token"
+        raise MoySkladError(msg, body=body, method="POST")
+    return token
