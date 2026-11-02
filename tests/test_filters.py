@@ -90,6 +90,22 @@ def test_values_are_formatted_by_type(value: Any, text: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "href",
+    [
+        "https://api.moysklad.ru/api/remap/1.2/entity/counterparty/a;b",
+        "https://api.moysklad.ru/api/remap/1.2/entity/counterparty/a\\",
+        "/entity/counterparty/a",
+        "ftp://api.moysklad.ru/x",
+        "https://",
+    ],
+)
+def test_an_href_that_could_add_a_condition_or_is_not_a_url_is_refused(href: str) -> None:
+    # An href is put into the filter as it is; a ; in it would start another condition.
+    with pytest.raises(ValueError, match="href"):
+        Filter().eq("agent", {"meta": {"href": href}})
+
+
+@pytest.mark.parametrize(
     "value", [None, [1, 2], date(2026, 11, 1), object(), {"name": "x"}, {"meta": {}}]
 )
 def test_values_of_other_types_are_refused(value: Any) -> None:

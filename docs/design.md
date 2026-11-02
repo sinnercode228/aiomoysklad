@@ -323,7 +323,9 @@ Values: `str` with `;` escaped; `bool` as `true`/`false`; `int`, `float`, `Decim
 `UUID` as text; a `datetime` as `YYYY-MM-DD HH:MM:SS` in Moscow time, converting aware values
 and taking naive ones as Moscow time (`_general.md § Формат даты и времени`: "MSK"; MSK is a
 fixed UTC+3, so no tz database is needed); a meta dict or anything with `href` as the href,
-for reference fields (`§ Фильтрация ссылочных полей`). Custom attributes are filtered by the
+for reference fields (`§ Фильтрация ссылочных полей`). An href goes in unescaped, so one that
+holds `;` or a backslash, or is not an absolute http(s) URL, is refused: it could add a
+condition. Custom attributes are filtered by the
 attribute's href as the field name (`§ Фильтрация по дополнительным полям`).
 
 The builder raises `ValueError` early for what the docs call an error: `=` plus an inequality

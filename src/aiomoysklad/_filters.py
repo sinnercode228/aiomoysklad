@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
+from urllib.parse import urlsplit
 
 from ._time import format_datetime
 
@@ -121,6 +122,19 @@ def _format(value: Any) -> str:
     if href is None:
         msg = f"cannot use a {type(value).__name__} as a filter value"
         raise TypeError(msg)
+    return _check_href(href)
+
+
+def _check_href(href: str) -> str:
+    # An href goes into the filter as it is, so a ; in it would start another condition, and
+    # a backslash could escape the separator after it.
+    if ";" in href or "\\" in href:
+        msg = f"an href in a filter cannot hold ; or a backslash: {href!r}"
+        raise ValueError(msg)
+    parts = urlsplit(href)
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        msg = f"an href in a filter must be an absolute http(s) URL: {href!r}"
+        raise ValueError(msg)
     return href
 
 
@@ -135,7 +149,7 @@ class Filter:
     Values: ``str`` with ``;`` escaped, ``bool`` as ``true``/``false``, numbers as they are, a
     ``UUID`` as text, a ``datetime`` as ``YYYY-MM-DD HH:MM:SS`` in Moscow time (a naive one is
     taken as Moscow time), and a meta dict, an entity with ``meta``, or anything with ``href``
-    as that href.
+    as that href, which must be an absolute http(s) URL without ``;`` or a backslash.
 
     Raises ``ValueError`` early for what the docs call an error: an equality and a comparison
     on one field, the same comparison twice on one field, and a like operator on a value that
