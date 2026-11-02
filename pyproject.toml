@@ -46,12 +46,22 @@ dev = [
 Homepage = "https://github.com/sinnercode228/aiomoysklad"
 Source = "https://github.com/sinnercode228/aiomoysklad"
 Issues = "https://github.com/sinnercode228/aiomoysklad/issues"
+Changelog = "https://github.com/sinnercode228/aiomoysklad/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/aiomoysklad"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/aiomoysklad", "tests", "docs", "LICENSE"]
+include = [
+  "src/aiomoysklad",
+  "tests",
+  "examples",
+  "docs",
+  "CHANGELOG.md",
+  "README.md",
+  "README.ru.md",
+  "LICENSE",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -73,7 +83,7 @@ exclude_also = ["if TYPE_CHECKING:", "\\.\\.\\.$", "raise NotImplementedError"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-src = ["src", "tests"]
+src = ["src", "tests", "examples"]
 
 [tool.ruff.lint]
 select = [
@@ -88,6 +98,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106", "S107", "PLR2004", "D", "PLC0415", "FBT", "ASYNC240", "S311"]
+"examples/**" = ["D", "S105", "PLR2004", "T201"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -96,4 +107,4 @@ convention = "google"
 python_version = "3.10"
 strict = true
 warn_unreachable = true
-files = ["src", "tests"]
+files = ["src", "tests", "examples"]
