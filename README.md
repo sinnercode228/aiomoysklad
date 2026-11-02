@@ -3,7 +3,10 @@
 Async toolkit for integrations with the [MoySklad](https://www.moysklad.ru) JSON API 1.2.
 Русская версия: [README.ru.md](README.ru.md).
 
-**Status: design stage.** There is no usable code yet. The plan for v0.1 is in
+**Status: in development, not released.** The core is written and tested against mocked
+HTTP: the client, the weighted rate limiter, the cap on requests in flight, 429 retries, the
+cut-off guard, typed errors, pagination and the `filter=` builder. The stock, assortment,
+order and webhook helpers are not written yet. The plan for v0.1 is in
 [docs/design.md](docs/design.md). Nothing here has been tested against a live MoySklad
 account.
 
