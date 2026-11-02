@@ -19,6 +19,7 @@ from ._errors import (
 )
 from ._models import ApiErrorDetail, Meta
 from ._ratelimit import ConcurrencyLimit, RateLimiter
+from ._retry import RetryPolicy
 from ._version import __version__
 from ._weights import request_weight
 
@@ -41,6 +42,7 @@ __all__ = [
     "RateLimitError",
     "RateLimiter",
     "RedirectError",
+    "RetryPolicy",
     "ServerError",
     "UnsupportedMediaTypeError",
     "ValidationError",
