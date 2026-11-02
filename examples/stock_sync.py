@@ -3,7 +3,8 @@
 Authorization, either one:
 
 * a token: ``MOYSKLAD_TOKEN=...``, plus ``MOYSKLAD_TOKEN_KIND=solution`` (or
-  ``draft_solution``) when it is a solution's token; by default it is taken as a user's
+  ``draft_solution``) when it is a solution's token; by default it is taken as a user's, and
+  a draft solution's token left that way is undercounted
 * login and password: ``MOYSKLAD_LOGIN=admin@example MOYSKLAD_PASSWORD=...``
 
 Run::

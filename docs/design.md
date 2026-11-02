@@ -82,8 +82,10 @@ BasicAuth(login: str, password: str)            # kind is always USER
 BearerToken(token: str, *, kind: AuthKind = AuthKind.USER)
 ```
 
-`USER` is the default because it is the most expensive kind: a wrong guess then makes the
-client slower, never blocked.
+`USER` is the default because a user's token is what `POST /security/token` issues. It is
+not the most expensive kind on every date: until 2026-12-01 a draft or in-moderation solution
+costs more (4 units against 3 from 2026-09-01), so a draft solution's token left on the
+default is undercounted and runs into 429s. The kind has to match the token.
 
 Weight of one request, from `_restrictions.md § Лимит запросов за 3-секундный период`:
 

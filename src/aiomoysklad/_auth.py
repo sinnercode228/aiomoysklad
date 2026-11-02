@@ -19,8 +19,10 @@ class AuthKind(enum.Enum):
     """Who the credentials belong to; this sets the weight of each request.
 
     Attributes:
-        USER: Login and password, or a user's token. The default, because it is the most
-            expensive kind: a wrong guess then makes the client slower, never blocked.
+        USER: Login and password, or a user's token; the default of
+            :class:`BearerToken`. It is not the most expensive kind on every date: until
+            2026-12-01 a draft solution costs more, so declare the kind that matches the
+            token.
         SOLUTION: The token of a public or private solution.
         DRAFT_SOLUTION: The token of a solution in status ``Черновик`` or ``На модерации``.
     """
@@ -69,7 +71,8 @@ class BearerToken:
 
     Args:
         token: The token of a user or a solution.
-        kind: Whose token it is. Defaults to :attr:`AuthKind.USER`, the most limited kind.
+        kind: Whose token it is; it sets the weight of each request. Defaults to
+            :attr:`AuthKind.USER`.
     """
 
     __slots__ = ("_token", "kind")

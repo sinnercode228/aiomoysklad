@@ -51,8 +51,10 @@ async def main(token: str) -> None:
             print(product["name"])
 ```
 
-`BearerToken` defaults to `AuthKind.USER`, the most expensive kind, so a wrong guess makes
-the client slower, never blocked. `BasicAuth(login, password)` is the other option. Several
+`BearerToken` defaults to `AuthKind.USER`. Pass the kind that matches the token: until
+2026-12-01 a draft or in-moderation solution costs more than a user (4 units against 3), so
+leaving such a token on the default undercounts and runs into 429s.
+`BasicAuth(login, password)` is the other option. Several
 clients with the same credentials can share one `RateLimiter` and `ConcurrencyLimit`.
 
 `Filter` builds `filter=` strings with the nine documented operators and escapes `;`:
