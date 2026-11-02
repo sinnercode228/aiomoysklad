@@ -188,6 +188,7 @@ class MoySklad:
         self.weights = dict(weights or {})
         self.webhook_disable_prefixes = tuple(map(_check_prefix, webhook_disable_prefixes))
         self._owns_http = http is None
+        self._closed = False
         self.http = http if http is not None else httpx.AsyncClient(timeout=timeout)
         self._today = today
         self._random = random.Random()  # noqa: S311 - jitter, not cryptography
@@ -213,9 +214,18 @@ class MoySklad:
         await self.aclose()
 
     async def aclose(self) -> None:
-        """Close the HTTP client if this client created it."""
+        """Close the HTTP client if this client created it; later requests are refused.
+
+        Closing twice is fine. A client given as ``http=`` is left open.
+        """
+        self._closed = True
         if self._owns_http and not self.http.is_closed:
             await self.http.aclose()
+
+    @property
+    def closed(self) -> bool:
+        """Whether :meth:`aclose` ran, or the ``httpx.AsyncClient`` under it was closed."""
+        return self._closed or self.http.is_closed
 
     def owns_url(self, url: str | httpx.URL) -> bool:
         """Tell whether ``url`` is an absolute URL under this client's API root.
@@ -335,9 +345,13 @@ class MoySklad:
             ValueError: The URL is outside the API root, the request line and headers exceed
                 8 KB, or ``headers`` tries to set ``Accept-Encoding`` or ``Authorization``.
             GuardTrippedError: Sending could get API access cut off; nothing was sent.
-            MoySkladError: A subclass matching the failure; see :mod:`aiomoysklad`.
+            MoySkladError: The client is closed, or a subclass matching the failure; see
+                :mod:`aiomoysklad`.
         """
         method = method.upper()
+        if self.closed:
+            msg = f"{method} {path_or_href.split('?', 1)[0]}: the client is closed"
+            raise MoySkladError(msg, method=method)
         target = self.url(path_or_href, params)
         path = self.api_path(target)
         if weight is None:

@@ -447,6 +447,27 @@ async def test_the_query_stays_out_of_the_log(
     assert "79260000000" not in caplog.text
 
 
+async def test_a_request_after_close_is_a_library_error(mock: respx.MockRouter) -> None:
+    ms = MoySklad(BearerToken(TOKEN))
+    async with ms:
+        pass
+    assert ms.closed
+    with pytest.raises(MoySkladError, match="closed"):
+        await ms.get(PRODUCT)
+    assert not mock.calls
+
+
+async def test_a_request_through_a_closed_outer_http_client_is_a_library_error() -> None:
+    sent: list[httpx.Request] = []
+    http = httpx.AsyncClient(transport=httpx.MockTransport(recorder(sent)))
+    ms = MoySklad(BearerToken(TOKEN), http=http)
+    await http.aclose()
+    assert ms.closed
+    with pytest.raises(MoySkladError, match="closed"):
+        await ms.get(PRODUCT)
+    assert not sent
+
+
 async def test_the_client_closes_only_its_own_http_client() -> None:
     ms = MoySklad(BearerToken(TOKEN))
     await ms.aclose()
