@@ -1,5 +1,6 @@
 """Async toolkit for MoySklad JSON API 1.2 integrations."""
 
+from ._assortment import Assortment
 from ._auth import AuthKind, BasicAuth, BearerToken
 from ._client import API_URL, MoySklad, issue_user_token
 from ._errors import (
@@ -39,6 +40,7 @@ __all__ = [
     "API_URL",
     "ApiErrorDetail",
     "ApiVersionGoneError",
+    "Assortment",
     "AuthError",
     "AuthKind",
     "BasicAuth",

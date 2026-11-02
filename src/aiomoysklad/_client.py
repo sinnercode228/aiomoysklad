@@ -14,6 +14,7 @@ from urllib.parse import quote
 
 import httpx
 
+from ._assortment import Assortment
 from ._auth import Auth, BasicAuth
 from ._errors import MoySkladError, NetworkError, error_from_response, parse_errors
 from ._filters import Filter
@@ -146,6 +147,7 @@ class MoySklad:
 
     Attributes:
         stock: The short stock reports, :class:`~aiomoysklad.StockReports`.
+        assortment: The assortment without stock, :class:`~aiomoysklad.Assortment`.
     """
 
     def __init__(
@@ -185,6 +187,7 @@ class MoySklad:
         self._random = random.Random()  # noqa: S311 - jitter, not cryptography
         self._warned_deprecated = False
         self.stock = StockReports(self)
+        self.assortment = Assortment(self)
 
     def __repr__(self) -> str:
         return f"MoySklad(base_url={self.base_url!r}, kind={self.auth.kind.name})"
